@@ -61,6 +61,7 @@ h2 { font-size: 16px; margin: 0; text-wrap: balance; }
 .brand .num { font-size: 12px; letter-spacing: 0.14em; color: var(--gold); font-weight: 700; }
 .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); white-space: nowrap; }
 .pill.shared { color: var(--good); border-color: currentColor; }
+.pill.off { color: var(--bad); border-color: currentColor; }
 .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; }
 .tabs a { text-align: center; padding: 8px 4px; border-radius: 7px; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; }
 .tabs a[aria-current="page"] { background: var(--ink); color: var(--on-ink); }
@@ -451,9 +452,10 @@ async function run(fn) {
 // ---------- 렌더
 function renderHeader() {
   const p = $('storePill');
-  if (repo.mode === 'loading') { p.textContent = '불러오는 중'; p.className = 'pill'; }
-  else if (repo.mode === 'db') { p.textContent = repo.stale ? '공유 저장 · 연결 확인 중' : '공유 저장'; p.className = 'pill shared'; }
-  else { p.textContent = '이 기기에만 저장'; p.className = 'pill'; }
+  if (repo.mode === 'loading') { p.textContent = '연결 중'; p.className = 'pill'; p.title = ''; }
+  else if (repo.mode === 'db' && !repo.stale) { p.textContent = '● 연결됨'; p.className = 'pill shared'; p.title = '모두와 같은 데이터를 봅니다'; }
+  else if (repo.mode === 'db') { p.textContent = '연결 확인 중'; p.className = 'pill'; p.title = '서버 응답을 기다리는 중입니다'; }
+  else { p.textContent = '연결 안 됨'; p.className = 'pill off'; p.title = '이 기기에만 저장됩니다'; }
 }
 
 function renderTeams() {
