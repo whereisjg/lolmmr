@@ -20,9 +20,11 @@
 ## 데이터 모델 (db 컬렉션)
 - `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`, `ts`
 - `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %)
-- 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 진행 중 시리즈는 기기별 `localStorage` `mmr-split`에 저장(공유 안 됨). 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
-- 경기 기록 순서: `matches` 추가 → 선수별 `players` 갱신. 취소는 `deltas`를 역으로 적용 후 경기 삭제. 취소한 세트의 시리즈는 팀 짜기 화면에 점수를 되돌려 복원
-- 규칙은 기본값(Contributor 이상 쓰기). 한 판 기록은 한 명만 누른다 (중복 반영 방지 장치 없음)
+- `series/current`: 진행 중 시리즈 공유 문서. `active`, `sid`, `blue[]`, `red[]`, `roles`, `key`, `score{blue,red}`, `ts`. 끝나면 `{active:false}`
+- 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
+- 기록/취소는 `repo.recordGame`/`repo.undoGame`. Firebase는 transaction + `FieldValue.increment`로 처리하고 경기 id를 `{sid}-g{세트}`로 고정해 중복 기록을 막는다(충돌 시 code `stale`). 아티팩트 db/local은 순차 쓰기
+- 같은 팀/다른 팀 조건: 기기별 `localStorage` `mmr-cons` `{same:[[id..]], diff:[[a,b]]}`. 같은 팀 묶음 최대 5명(겹치면 합침), 다른 팀은 2명 쌍. `pickSplit`의 `fitsCons`로 조합을 거른 뒤 기존 규칙 적용. 만족하는 조합이 없으면 null
+- 취소는 `deltas`를 역으로 적용 후 경기 삭제하고, 그 세트의 시리즈를 점수를 되돌려 복원
 - `localStorage` 모드: 키 `mmr-balancer-v1`에 `{players:{}, matches:{}}`. 참가자 선택은 `mmr-sel`
 
 ## 알고리즘
@@ -41,17 +43,18 @@
 
 ## 알려진 한계
 - 라인별 MMR 없음 (선호 포지션만 반영, MMR은 하나)
-- 쓰기가 원자적이지 않음. 두 명이 동시에 기록하면 어긋날 수 있음
+- 아티팩트 db/local 모드는 쓰기가 원자적이지 않음 (Firebase만 transaction)
+- 선수 동시 편집은 마지막 저장이 남음
 - 20명이 동시에 두 판을 돌리는 상황은 고려하지 않음 (한 판 최대 10명)
 - Firestore 규칙이 공개라 링크를 아는 누구나 데이터를 지우거나 바꿀 수 있음
 
 ## 다음 작업 후보 (우선순위 순)
 1. (완료) 선호 포지션 최대 2개 입력, 팀 분할 시 포지션 배정 반영. 라인별 MMR은 보류
-2. "같은 팀 / 다른 팀" 지정 (듀오 고정, 팀 분리)
+2. (완료) 같은 팀 / 다른 팀 지정
 3. 20명 중 10명 로테이션 추천 (오늘 적게 뛴 사람 우선)
 4. 경기 MVP 가산점 (선택 입력)
 5. (완료) Firebase Firestore 지원
-6. 중복 기록 방지: 대기 중인 경기 문서를 공유해 한 번만 확정
+6. (완료) 중복 기록 방지 (Firebase transaction)
 
 ## 확인 방법
 - 구문: `node --check`로 `<script>` 내용 검사
