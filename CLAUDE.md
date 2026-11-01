@@ -18,13 +18,13 @@
 - 변경 후 확인: 스크립트 구문(`node --check`), 순수 로직 샘플 실행, 폰 폭(약 400px)에서 가로 스크롤 없음
 
 ## 데이터 모델 (db 컬렉션)
-- `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`(세트 기준), `sWins`, `sLosses`(시리즈 기준, 시리즈가 끝나는 세트에서만 갱신), `riotNames[]`(결과창 닉네임 자동 연결용), `streak`(시리즈 기준 연승 양수/연패 음수, 시리즈가 끝나는 세트에서만 `nextStreak`로 갱신. `시리즈 종료`로 중단하면 변화 없음), `ts`
-- `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %), `prevStreak{id:n}`(시리즈를 끝낸 세트에만. 취소 시 되돌릴 이전 연속 값), `stats{id:{team,name,champion,level,kills,deaths,assists,cs,gold,damage,items[],extra[{key,value}]}}`, `statsMeta{duration,winner,teams,notes,ts}`(결과창 인식 결과)
+- `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`(세트 기준), `sWins`, `sLosses`(시리즈 기준, 시리즈가 끝나는 세트에서만 갱신), `setStreak`(세트 기준 연속, 매 세트 갱신, 가속에 사용), `riotNames[]`(결과창 닉네임 자동 연결용), `streak`(시리즈 기준 연승 양수/연패 음수, 시리즈가 끝나는 세트에서만 `nextStreak`로 갱신. `시리즈 종료`로 중단하면 변화 없음), `ts`
+- `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %), `prevStreak{id:n}`(시리즈를 끝낸 세트에만. 취소 시 되돌릴 이전 연속 값), `prevSetStreak{id:n}`(매 세트. 최근 경기 삭제 시 되돌릴 이전 세트 연속 값), `stats{id:{team,name,champion,level,kills,deaths,assists,cs,gold,damage,items[],extra[{key,value}]}}`, `statsMeta{duration,winner,teams,notes,ts}`(결과창 인식 결과)
 - `series/current`: 진행 중 시리즈 공유 문서. `active`, `sid`, `blue[]`, `red[]`, `roles`, `key`, `score{blue,red}`, `done`, `winner`, `ts`. 시리즈가 끝나면 `done:true`로 결과를 남기고(같은 팀으로 한 번 더 / 결과 닫기), 닫으면 `{active:false}`
 - 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
 - 기록/취소는 `repo.recordGame`/`repo.undoGame`. Firebase는 transaction + `FieldValue.increment`로 처리하고 경기 id를 `{sid}-g{세트}`로 고정해 중복 기록을 막는다(충돌 시 code `stale`). 아티팩트 db/local은 순차 쓰기
 - 같은 팀/다른 팀 조건: 기기별 `localStorage` `mmr-cons` `{same:[[id..]], diff:[[a,b]]}`. 같은 팀 묶음 최대 5명(겹치면 합침), 다른 팀은 2명 쌍. `pickSplit`의 `fitsCons`로 조합을 거른 뒤 기존 규칙 적용. 만족하는 조합이 없으면 null
-- 삭제는 `repo.trashGame`: 아무 경기나 선택 가능. `deltas`·전적·시리즈 전적을 역으로 적용하고 경기를 `trash/{id}`(원본 + `deletedAt`)로 옮긴다. 가장 최근 경기일 때만 연승(`prevStreak`)과 진행 중 시리즈를 되돌린다. 이전 경기는 그 경기 증감만 빼므로 이후 경기의 증감은 재계산하지 않는다
+- 삭제는 `repo.trashGame`: 아무 경기나 선택 가능. `deltas`·전적·시리즈 전적을 역으로 적용하고 경기를 `trash/{id}`(원본 + `deletedAt`)로 옮긴다. 가장 최근 경기일 때만 연승(`prevStreak`, `prevSetStreak`)과 진행 중 시리즈를 되돌린다. 이전 경기는 그 경기 증감만 빼므로 이후 경기의 증감은 재계산하지 않는다
 - 휴지통: 기록 탭 아래. `repo.restoreGame`(증감·전적 재적용, 연승·시리즈는 그대로) / `repo.purgeTrash`(완전 삭제, 2단계 확인)
 - `localStorage` 모드: 키 `mmr-balancer-v1`에 `{players:{}, matches:{}}`. 참가자 선택은 `mmr-sel`
 
@@ -36,7 +36,7 @@
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600
 - 팀 MMR = 평균. 기대 승률 `E = 1 / (1 + 10^((Rb - Ra) / 400))`
 - 증감 = `round(K × 가속 × (결과 − E))`, 결과는 승 1 / 패 0. K는 10판 미만 48, 이후 32. E는 팀 평균끼리 비교(개인 MMR vs 상대 평균 방식은 균형 판에서 점수가 평균으로 몰려 쓰지 않음)
-- 가속 `streakMult`: 시리즈 기준 n연승(n≥2) 중 승리 또는 n연패 중 패배면 ×(1+0.1n), 상한 없음(10연속 ×2). 그 외 ×1. 팀 카드에 `n연승 ×1.n` 표시
+- 가속 `streakMult`: 세트 기준(`setStreak`) n연승(n≥2) 중 승리 또는 n연패 중 패배면 ×(1+0.1n), 상한 없음(10연속 ×2). 그 외 ×1. 팀 카드에 `n연승 ×1.n` 표시
 - 팀 분할: 선택 인원(2~10, 짝수)의 모든 반분 조합(10명이면 126개, 0번 선수는 항상 A팀)을 평균 차이 순으로 정렬 → 최소 차이 + 10점 이내 상위 12개 중 무작위. 직전과 같은 조합은 피함. 블루/레드는 무작위 배정
 - 포지션: 키 `top`/`jungle`/`mid`/`adc`/`support`. 최소 차이 + `POS_SLACK`(30) 안의 조합마다 `assignRoles`로 팀 내 서로 다른 포지션을 배정해 비선호 배정 수(`off`)를 구하고, `off`가 가장 적은 조합만 남긴 뒤 위 규칙(+10, 상위 12, 직전 제외)을 적용. MMR은 포지션과 무관하게 하나
 

@@ -359,7 +359,7 @@ function pickSplit(players, lastKey, rnd = Math.random, cons = {}) {
   return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key, roles: s.roles, off: s.off };
 }
 
-// 연승/연패 가속: 시리즈 기준 n연속(2 이상) 중에 같은 결과가 나오면 ×(1 + 0.1n). 상한 없음
+// 연승/연패 가속: 세트 기준 n연속(2 이상) 중에 같은 결과가 나오면 ×(1 + 0.1n). 상한 없음
 function streakMult(streak, won) {
   const n = Math.abs(streak || 0);
   if (n < 2 || (streak > 0) !== won) return 1;
@@ -369,7 +369,7 @@ function computeDeltas(blue, red, winner, map) {
   const rb = teamAvg(blue, map), rr = teamAvg(red, map);
   const eBlue = expected(rb, rr);
   const deltas = {};
-  const one = (id, won, e) => Math.round(kFactor(map[id].games) * streakMult(map[id].streak, won) * ((won ? 1 : 0) - e));
+  const one = (id, won, e) => Math.round(kFactor(map[id].games) * streakMult(map[id].setStreak, won) * ((won ? 1 : 0) - e));
   for (const id of blue) deltas[id] = one(id, winner === 'blue', eBlue);
   for (const id of red) deltas[id] = one(id, winner === 'red', 1 - eBlue);
   return { deltas, pBlue: Math.round(eBlue * 100) };
@@ -495,18 +495,20 @@ const repo = {
         const c = cur.exists ? cur.data() : null;
         if (had.exists || !c || !c.active || c.done || c.sid !== s.sid || c.score.blue + c.score.red !== played) throw { code: 'stale' };
         // 연승/연패는 세트가 아니라 시리즈 결과로 센다. 시리즈가 끝나는 세트에서만 갱신
-        const snaps = finished ? await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id)))) : [];
+        const snaps = await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id))));
+        const prevSet = Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).setStreak || 0]));
         const prev = finished ? Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0])) : null;
-        t.set(mref, prev ? { ...match, prevStreak: prev } : match);
-        ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: inc(won(id) ? 1 : 0), sLosses: inc(won(id) ? 0 : 1) } : {}), ts }));
+        t.set(mref, { ...match, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
+        ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), setStreak: nextStreak(prevSet[id], won(id)), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: inc(won(id) ? 1 : 0), sLosses: inc(won(id) ? 0 : 1) } : {}), ts }));
         t.set(sref, seriesDoc(next, ts));
       });
     } else {
+      const prevSet = Object.fromEntries(ids.map(id => [id, map[id].setStreak || 0]));
       const prev = finished ? Object.fromEntries(ids.map(id => [id, map[id].streak || 0])) : null;
-      await this.setMatch(mid, prev ? { ...match, prevStreak: prev } : match);
+      await this.setMatch(mid, { ...match, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
       for (const id of ids) {
         const p = map[id];
-        await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: (p.sWins || 0) + (won(id) ? 1 : 0), sLosses: (p.sLosses || 0) + (won(id) ? 0 : 1) } : {}), ts });
+        await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), setStreak: nextStreak(prevSet[id], won(id)), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: (p.sWins || 0) + (won(id) ? 1 : 0), sLosses: (p.sLosses || 0) + (won(id) ? 0 : 1) } : {}), ts });
       }
       await this.setSeries(next);
     }
@@ -529,7 +531,10 @@ const repo = {
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
     // 시리즈를 끝낸 세트에만 prevStreak가 있다
     const ended = pid => m.prevStreak && pid in m.prevStreak;
-    const streakOf = pid => (isLatest && ended(pid) ? { streak: m.prevStreak[pid] } : {});
+    const streakOf = pid => ({
+      ...(isLatest && ended(pid) ? { streak: m.prevStreak[pid] } : {}),
+      ...(isLatest && m.prevSetStreak && pid in m.prevSetStreak ? { setStreak: m.prevSetStreak[pid] } : {})
+    });
     const { id: _id, ...doc } = m;
     const trashed = { ...doc, deletedAt: ts };
     if (this.kind === 'firebase') {
@@ -666,7 +671,7 @@ function renderTeams() {
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = (p.pos || []).length && !p.pos.includes(r);
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.streak || 0) >= 2 ? ` <span class="${p.streak > 0 ? 'up' : 'down'} kda" title="같은 결과면 증감 ×${streakMult(p.streak, p.streak > 0).toFixed(1)}">${Math.abs(p.streak)}${p.streak > 0 ? '연승' : '연패'} ×${streakMult(p.streak, p.streak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승' : '연패'}. 같은 결과면 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승' : '연패'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
