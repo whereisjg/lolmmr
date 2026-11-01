@@ -160,6 +160,10 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .shot-who { min-width: 0; overflow-wrap: anywhere; }
 .shot-who .b { color: var(--blue); }
 .shot select { padding: 5px 8px; font-size: 13px; max-width: 45%; }
+.trash { border-top: 1px dashed var(--line); padding-top: 10px; }
+.trash summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.trash[open] { display: flex; flex-direction: column; gap: 8px; }
+.trash-item { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; background: var(--red-soft); border: 1px solid var(--bad); font-size: 14px; }
 
 /* 선수 */
@@ -390,7 +394,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 const repo = {
-  mode: 'loading', players: [], matches: [], listeners: [], db: null, timer: null, stale: false,
+  mode: 'loading', players: [], matches: [], trash: [], listeners: [], db: null, timer: null, stale: false,
   onChange(fn) { this.listeners.push(fn); },
   emit() { this.listeners.forEach(fn => fn()); },
   async init() {
@@ -418,6 +422,9 @@ const repo = {
       this.matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       done('m', snap); this.emit();
     }, fail);
+    this.db.collection('trash').orderBy('deletedAt', 'desc').limit(50).onSnapshot(snap => {
+      this.trash = snap.docs.map(d => ({ id: d.id, ...d.data() })); this.emit();
+    }, () => toast('휴지통을 불러오지 못했습니다. Firebase 규칙에 trash를 추가해 주세요.'));
     this.db.doc('series/current').onSnapshot(d => {
       const x = d.exists ? d.data() : null;
       this.series = x && x.active ? x : null; this.emit();
@@ -433,6 +440,7 @@ const repo = {
     this.players = Object.entries(this.local.players).map(([id, d]) => ({ id, ...d }));
     this.matches = Object.entries(this.local.matches).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.ts - a.ts).slice(0, 30);
     this.series = this.local.series || null;
+    this.trash = Object.entries(this.local.trash || {}).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.deletedAt - a.deletedAt);
   },
   saveLocal() { lsSet(LS_KEY, JSON.stringify(this.local)); this.syncLocal(); this.emit(); },
   async addPlayer(data) {
@@ -497,21 +505,26 @@ const repo = {
     }
     return { score, finished };
   },
-  // 마지막 세트 취소. 그 세트의 시리즈를 진행 중으로 되살린다
-  async undoGame(m, map) {
+  // 경기 삭제: MMR·전적을 되돌리고 경기를 휴지통(trash)으로 옮긴다.
+  // 가장 최근 경기면 연승과 진행 중 시리즈까지 되돌린다. 이전 경기는 그 경기의 증감만 빼고 연승은 그대로 둔다
+  async trashGame(m, map) {
+    const isLatest = this.matches[0] && this.matches[0].id === m.id;
     const ts = Date.now(), won = id => (m.blue.includes(id) ? 'blue' : 'red') === m.winner;
     const restore = { blue: 0, red: 0 };
     this.matches.filter(x => x.series === m.series && x.id !== m.id).forEach(x => { restore[x.winner]++; });
     const nextFor = c => {
       if (!m.series) return c;
-      if (c && c.sid === m.series) return { ...c, done: false, winner: null, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
+      if (c && c.sid === m.series && (isLatest || !c.done)) return { ...c, done: false, winner: null, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
+      if (!isLatest) return c;
       if (c && !c.done && c.score.blue + c.score.red > 0) return c; // 다른 시리즈가 진행 중이면 그대로
       return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore };
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
-    // 시리즈를 끝낸 세트에만 prevStreak가 있다. 없으면 연승을 건드리지 않는다
+    // 시리즈를 끝낸 세트에만 prevStreak가 있다
     const ended = pid => m.prevStreak && pid in m.prevStreak;
-    const streakOf = pid => (ended(pid) ? { streak: m.prevStreak[pid] } : {});
+    const streakOf = pid => (isLatest && ended(pid) ? { streak: m.prevStreak[pid] } : {});
+    const { id: _id, ...doc } = m;
+    const trashed = { ...doc, deletedAt: ts };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + m.id);
       await this.db.runTransaction(async t => {
@@ -519,6 +532,7 @@ const repo = {
         if (!had.exists) throw { code: 'stale' };
         const c = cur.exists && cur.data().active ? cur.data() : null;
         pids.forEach(pid => t.update(this.db.doc('players/' + pid), { mmr: inc(-m.deltas[pid]), games: inc(-1), wins: inc(won(pid) ? -1 : 0), losses: inc(won(pid) ? 0 : -1), ...streakOf(pid), ...(ended(pid) ? { sWins: inc(won(pid) ? -1 : 0), sLosses: inc(won(pid) ? 0 : -1) } : {}), ts }));
+        t.set(this.db.doc('trash/' + m.id), trashed);
         t.delete(mref);
         t.set(sref, seriesDoc(nextFor(c), ts));
       });
@@ -527,9 +541,39 @@ const repo = {
         const p = map[pid], d = m.deltas[pid];
         await this.updatePlayer(pid, { mmr: p.mmr - d, games: Math.max(0, p.games - 1), wins: Math.max(0, p.wins - (won(pid) ? 1 : 0)), losses: Math.max(0, p.losses - (won(pid) ? 0 : 1)), ...streakOf(pid), ...(ended(pid) ? { sWins: Math.max(0, (p.sWins || 0) - (won(pid) ? 1 : 0)), sLosses: Math.max(0, (p.sLosses || 0) - (won(pid) ? 0 : 1)) } : {}), ts });
       }
+      this.local.trash = { ...(this.local.trash || {}), [m.id]: trashed };
       await this.deleteMatch(m.id);
       await this.setSeries(nextFor(this.series));
     }
+    return { isLatest };
+  },
+  // 휴지통에서 복원: 증감과 전적을 다시 더하고 경기로 되돌린다. 연승과 진행 중 시리즈는 건드리지 않는다
+  async restoreGame(x, map) {
+    const ts = Date.now(), won = id => (x.blue.includes(id) ? 'blue' : 'red') === x.winner;
+    const { id, deletedAt, ...doc } = x;
+    const pids = Object.keys(x.deltas || {}).filter(pid => map[pid]);
+    const ended = pid => x.prevStreak && pid in x.prevStreak;
+    if (this.kind === 'firebase') {
+      const inc = firebase.firestore.FieldValue.increment, tref = this.db.doc('trash/' + id);
+      await this.db.runTransaction(async t => {
+        const had = await t.get(tref);
+        if (!had.exists) throw { code: 'stale' };
+        pids.forEach(pid => t.update(this.db.doc('players/' + pid), { mmr: inc(x.deltas[pid]), games: inc(1), wins: inc(won(pid) ? 1 : 0), losses: inc(won(pid) ? 0 : 1), ...(ended(pid) ? { sWins: inc(won(pid) ? 1 : 0), sLosses: inc(won(pid) ? 0 : 1) } : {}), ts }));
+        t.set(this.db.doc('matches/' + id), doc);
+        t.delete(tref);
+      });
+    } else {
+      for (const pid of pids) {
+        const p = map[pid];
+        await this.updatePlayer(pid, { mmr: p.mmr + x.deltas[pid], games: p.games + 1, wins: p.wins + (won(pid) ? 1 : 0), losses: p.losses + (won(pid) ? 0 : 1), ...(ended(pid) ? { sWins: (p.sWins || 0) + (won(pid) ? 1 : 0), sLosses: (p.sLosses || 0) + (won(pid) ? 0 : 1) } : {}), ts });
+      }
+      delete this.local.trash[id];
+      await this.setMatch(id, doc);
+    }
+  },
+  async purgeTrash(id) {
+    if (this.mode === 'db') return this.db.doc('trash/' + id).delete();
+    delete this.local.trash[id]; this.saveLocal();
   }
 };
 function seriesDoc(x, ts) {
@@ -546,7 +590,7 @@ const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
   picking: null, pick: new Set(), swapId: null, upload: null,
-  lastKey: null, busy: false, confirmUndo: false, editId: null, confirmDelete: false
+  lastKey: null, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
 };
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
 const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
@@ -699,26 +743,42 @@ function uploadPanel(m) {
     <div class="row"><button class="small primary" id="btnShotSave" ${state.busy ? 'disabled' : ''}>저장</button><button class="small" id="btnShotCancel">취소</button></div>
   </div>`;
 }
+function trashHtml() {
+  if (!repo.trash.length) return '';
+  const dis = state.busy ? 'disabled' : '';
+  const names = (x, ids) => ids.map(id => esc((x.names || {})[id] || '?')).join(', ');
+  return `<details class="trash" ${state.trashOpen ? 'open' : ''}><summary>휴지통 ${repo.trash.length}건</summary>
+    <span class="muted">복원하면 그 경기의 MMR·전적이 다시 반영됩니다. 연승 기록은 바뀌지 않습니다.</span>
+    ${repo.trash.map(x => `<div class="trash-item">
+      <div class="match-head"><span class="num">${fmtTime(x.ts)}${x.game ? ` · ${x.game}세트` : ''}</span><span class="${x.winner === 'blue' ? 'win-b' : 'win-r'}">${x.winner === 'blue' ? '블루 승' : '레드 승'}</span></div>
+      <span class="muted">블루: ${names(x, x.blue)} / 레드: ${names(x, x.red)} · 삭제 ${fmtTime(x.deletedAt)}</span>
+      <div class="row">${state.confirmPurge === x.id
+        ? `<span class="down">완전히 지우면 되돌릴 수 없습니다.</span><button class="small danger" data-purge-yes="${esc(x.id)}" ${dis}>완전 삭제</button><button class="small" data-purge-no>취소</button>`
+        : `<button class="small" data-restore="${esc(x.id)}" ${dis}>복원</button><button class="small danger" data-purge="${esc(x.id)}" ${dis}>완전 삭제</button>`}</div>
+    </div>`).join('')}
+  </details>`;
+}
 function renderHistory() {
   const el = $('history');
-  if (!repo.matches.length) { el.innerHTML = '<h2>경기 기록</h2><div class="empty">아직 기록된 경기가 없습니다. 팀 짜기에서 승리 팀을 누르면 여기에 쌓입니다.</div>'; return; }
+  if (!repo.matches.length) { el.innerHTML = `<h2>경기 기록</h2><div class="empty">아직 기록된 경기가 없습니다. 팀 짜기에서 승리 팀을 누르면 여기에 쌓입니다.</div>${trashHtml()}`; return; }
   const side = (m, ids, cls, label) => `<ul><li><span class="label ${cls}">${label}</span></li>${ids.map(id => {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
     return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
   }).join('')}</ul>`;
-  const undo = state.confirmUndo
-    ? `<div class="confirm"><span>${fmtTime(repo.matches[0].ts)} 경기를 취소하고 MMR을 되돌릴까요?</span><button class="danger small" id="btnUndoYes" ${state.busy ? 'disabled' : ''}>취소 확정</button><button class="small" id="btnUndoNo">아니오</button></div>`
-    : `<button class="small danger" id="btnUndo" ${state.busy ? 'disabled' : ''}>마지막 경기 취소</button>`;
+  const dis = state.busy ? 'disabled' : '';
+  const delCtl = m => state.confirmDel === m.id
+    ? `<div class="confirm"><span>이 경기를 휴지통으로 옮기고 MMR·전적을 되돌릴까요?${m.id === repo.matches[0].id ? '' : ' 이전 경기라 연승 기록은 그대로 둡니다.'}</span><button class="danger small" data-del-yes="${esc(m.id)}" ${dis}>삭제</button><button class="small" data-del-no>취소</button></div>`
+    : `<button class="small danger" data-del="${esc(m.id)}" ${dis}>삭제</button>`;
   el.innerHTML = `<div class="row between"><h2>경기 기록</h2><span class="muted">최근 ${repo.matches.length}경기</span></div>
-    <div>${undo}</div>
     ${repo.matches.map(m => `<div class="match">
       <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}</span>
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
-      ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : VISION_URL ? `<div><button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 다시 올리기' : '결과창 올리기'}</button>${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}</div>` : ''}
-    </div>`).join('')}`;
+      ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : ''}
+      <div class="row">${delCtl(m)}${!(state.upload && state.upload.mid === m.id) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 다시 올리기' : '결과창 올리기'}</button>${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}` : ''}</div>
+    </div>`).join('')}${trashHtml()}`;
 }
 
 function renderPlayers() {
@@ -933,16 +993,29 @@ $('history').addEventListener('click', async e => {
     if (ok) { state.upload = null; toast(`${Object.keys(stats).length}명의 결과를 저장했습니다.`); renderHistory(); }
     return;
   }
-  const id = e.target.id;
-  if (id === 'btnUndo') { state.confirmUndo = true; renderHistory(); }
-  else if (id === 'btnUndoNo') { state.confirmUndo = false; renderHistory(); }
-  else if (id === 'btnUndoYes') {
-    const m = repo.matches[0]; if (!m) return;
-    const ok = await run(() => repo.undoGame(m, pmap()));
-    state.confirmUndo = false;
-    if (ok && m.series) { state.selected = new Set([...m.blue, ...m.red]); saveSel(); }
+  const t = e.target, d = t.dataset;
+  if (t.closest('.trash > summary')) { state.trashOpen = !t.closest('.trash').open; return; }
+  if (d.del) { state.confirmDel = d.del; renderHistory(); }
+  else if ('delNo' in d) { state.confirmDel = null; renderHistory(); }
+  else if (d.delYes) {
+    const m = repo.matches.find(x => x.id === d.delYes); if (!m) return;
+    let r = null;
+    const ok = await run(async () => { r = await repo.trashGame(m, pmap()); });
+    state.confirmDel = null;
+    if (ok && r.isLatest && m.series) { state.selected = new Set([...m.blue, ...m.red]); saveSel(); }
     renderAll();
-    if (ok) toast('마지막 경기를 취소했습니다.');
+    if (ok) toast('휴지통으로 옮기고 MMR을 되돌렸습니다.');
+  }
+  else if (d.restore) {
+    const x = repo.trash.find(y => y.id === d.restore); if (!x) return;
+    if (await run(() => repo.restoreGame(x, pmap()))) toast('경기를 복원했습니다.');
+  }
+  else if (d.purge) { state.confirmPurge = d.purge; renderHistory(); }
+  else if ('purgeNo' in d) { state.confirmPurge = null; renderHistory(); }
+  else if (d.purgeYes) {
+    const ok = await run(() => repo.purgeTrash(d.purgeYes));
+    state.confirmPurge = null; renderHistory();
+    if (ok) toast('완전히 삭제했습니다.');
   }
 });
 

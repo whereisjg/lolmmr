@@ -1,10 +1,11 @@
 rules_version = '2';
 // 로그인 없이 링크를 아는 사람은 누구나 읽고 쓸 수 있다. 내전 친구용.
-// players, matches, series 컬렉션만 열고 나머지는 막는다.
+// players, matches, series, trash 컬렉션만 열고 나머지는 막는다.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /players/{id} { allow read, write: if true; }
     match /matches/{id} { allow read, write: if true; }
     match /series/{id} { allow read, write: if true; }
+    match /trash/{id} { allow read, write: if true; }
   }
 }

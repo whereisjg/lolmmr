@@ -6,7 +6,7 @@
 - 단일 파일 `index.html` (HTML + CSS + vanilla JS, 빌드 없음, 외부 라이브러리 없음)
 - Claude 아티팩트로 배포: https://claude.ai/artifact/HpJkteQe4aXS2sTck9qZKi (capabilities `db`). 공유 저장은 아티팩트 `db` 런타임에 의존
 - 저장소 우선순위: `FIREBASE_CONFIG`가 있으면 Firestore(로그인 없이 공유, GitHub Pages 배포용) → 아티팩트 `db` → `localStorage`(이 기기에만 저장)
-- Firestore compat SDK(gstatic 10.12.2)는 `repo`가 쓰는 API와 같은 모양이라 `this.db`에 그대로 넣는다. 보안 규칙은 `firestore.rules`(players, matches 공개 읽기/쓰기)
+- Firestore compat SDK(gstatic 10.12.2)는 `repo`가 쓰는 API와 같은 모양이라 `this.db`에 그대로 넣는다. 보안 규칙은 `firestore.rules`(players, matches, series, trash 공개 읽기/쓰기)
 - UI 언어는 한국어. 폰트는 Google Fonts(Noto Sans KR, Chakra Petch)
 - 아티팩트로 다시 올릴 때는 `<body>` 안쪽(`<title>`부터 `</script>`까지)만 게시한다. 저장소 파일의 doctype/head 래퍼는 단독 실행용
 
@@ -24,7 +24,8 @@
 - 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
 - 기록/취소는 `repo.recordGame`/`repo.undoGame`. Firebase는 transaction + `FieldValue.increment`로 처리하고 경기 id를 `{sid}-g{세트}`로 고정해 중복 기록을 막는다(충돌 시 code `stale`). 아티팩트 db/local은 순차 쓰기
 - 같은 팀/다른 팀 조건: 기기별 `localStorage` `mmr-cons` `{same:[[id..]], diff:[[a,b]]}`. 같은 팀 묶음 최대 5명(겹치면 합침), 다른 팀은 2명 쌍. `pickSplit`의 `fitsCons`로 조합을 거른 뒤 기존 규칙 적용. 만족하는 조합이 없으면 null
-- 취소는 `deltas`를 역으로 적용 후 경기 삭제하고, 그 세트의 시리즈를 점수를 되돌려 복원
+- 삭제는 `repo.trashGame`: 아무 경기나 선택 가능. `deltas`·전적·시리즈 전적을 역으로 적용하고 경기를 `trash/{id}`(원본 + `deletedAt`)로 옮긴다. 가장 최근 경기일 때만 연승(`prevStreak`)과 진행 중 시리즈를 되돌린다. 이전 경기는 그 경기 증감만 빼므로 이후 경기의 증감은 재계산하지 않는다
+- 휴지통: 기록 탭 아래. `repo.restoreGame`(증감·전적 재적용, 연승·시리즈는 그대로) / `repo.purgeTrash`(완전 삭제, 2단계 확인)
 - `localStorage` 모드: 키 `mmr-balancer-v1`에 `{players:{}, matches:{}}`. 참가자 선택은 `mmr-sel`
 
 ## 결과창 인식
@@ -42,7 +43,7 @@
 - 탭은 hash 라우팅: `#teams`, `#ranking`, `#history`, `#players`
 - 팀 짜기: 참가자 선택 칩 → 팀 짜기 또는 직접 짜기(MMR 순 번갈아 배정 후 시작) → 1세트 전에는 선수를 눌러 상대 팀 선수와 맞바꾸기(포지션 재배정) → 승률 막대와 두 팀 카드(배정 포지션, 비선호 배정은 금색, 예상 증감 표시) → 다시 짜기 / 블루 승리 / 레드 승리
 - 순위: MMR 내림차순, 시리즈 전적, 세트 전적, 연속(시리즈 기준 2연승/2연패 이상), 시리즈 승률, 배치(10판 미만) 표시
-- 기록: 최근 30경기, 선수별 증감, 마지막 경기 취소(2단계 확인)
+- 기록: 최근 30경기, 선수별 증감, 경기별 삭제(2단계 확인, 휴지통으로), 휴지통(복원/완전 삭제)
 - 선수: 개별 추가(선호 포지션 선택), 이름 일괄 추가(줄바꿈/쉼표), 편집 패널(이름, MMR), 삭제(2단계 확인)
 
 ## 알려진 한계
