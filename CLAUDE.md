@@ -5,7 +5,8 @@
 ## 현재 상태
 - 단일 파일 `index.html` (HTML + CSS + vanilla JS, 빌드 없음, 외부 라이브러리 없음)
 - Claude 아티팩트로 배포: https://claude.ai/artifact/HpJkteQe4aXS2sTck9qZKi (capabilities `db`). 공유 저장은 아티팩트 `db` 런타임에 의존
-- `window.claude.use('db')`가 없거나 `null`이면 `localStorage` 모드로 자동 전환 (이 기기에만 저장)
+- 저장소 우선순위: `FIREBASE_CONFIG`가 있으면 Firestore(로그인 없이 공유, GitHub Pages 배포용) → 아티팩트 `db` → `localStorage`(이 기기에만 저장)
+- Firestore compat SDK(gstatic 10.12.2)는 `repo`가 쓰는 API와 같은 모양이라 `this.db`에 그대로 넣는다. 보안 규칙은 `firestore.rules`(players, matches 공개 읽기/쓰기)
 - UI 언어는 한국어. 폰트는 Google Fonts(Noto Sans KR, Chakra Petch)
 - 아티팩트로 다시 올릴 때는 `<body>` 안쪽(`<title>`부터 `</script>`까지)만 게시한다. 저장소 파일의 doctype/head 래퍼는 단독 실행용
 
@@ -42,14 +43,14 @@
 - 라인별 MMR 없음 (선호 포지션만 반영, MMR은 하나)
 - 쓰기가 원자적이지 않음. 두 명이 동시에 기록하면 어긋날 수 있음
 - 20명이 동시에 두 판을 돌리는 상황은 고려하지 않음 (한 판 최대 10명)
-- 아티팩트 밖(일반 웹 호스팅, GitHub Pages)에서는 공유 저장이 없음
+- Firestore 규칙이 공개라 링크를 아는 누구나 데이터를 지우거나 바꿀 수 있음
 
 ## 다음 작업 후보 (우선순위 순)
 1. (완료) 선호 포지션 최대 2개 입력, 팀 분할 시 포지션 배정 반영. 라인별 MMR은 보류
 2. "같은 팀 / 다른 팀" 지정 (듀오 고정, 팀 분리)
 3. 20명 중 10명 로테이션 추천 (오늘 적게 뛴 사람 우선)
 4. 경기 MVP 가산점 (선택 입력)
-5. 아티팩트 밖 배포가 필요하면 저장소 교체 (Firebase, Supabase, Google Sheets 중 택 1). `repo` 객체만 바꾸면 되게 설계됨
+5. (완료) Firebase Firestore 지원
 6. 중복 기록 방지: 대기 중인 경기 문서를 공유해 한 번만 확정
 
 ## 확인 방법

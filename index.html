@@ -245,6 +245,8 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 // ---------- 순수 로직
 const TIERS = [['아이언', 700], ['브론즈', 850], ['실버', 1000], ['골드', 1150], ['플래티넘', 1300], ['에메랄드', 1450], ['다이아 이상', 1600]];
@@ -337,6 +339,8 @@ function parseNames(text) {
   return out;
 }
 // ---------- 저장소
+// Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
+const FIREBASE_CONFIG = null;
 const LS_KEY = 'mmr-balancer-v1';
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -348,7 +352,9 @@ const repo = {
   emit() { this.listeners.forEach(fn => fn()); },
   async init() {
     let db = null;
-    try { if (window.claude && typeof window.claude.use === 'function') db = await window.claude.use('db'); } catch (e) { db = null; }
+    // Firestore compat API는 이 래퍼가 쓰는 collection/doc/onSnapshot/set/update/delete와 같은 모양
+    try { if (FIREBASE_CONFIG && window.firebase) db = firebase.initializeApp(FIREBASE_CONFIG).firestore(); } catch (e) { db = null; }
+    try { if (!db && window.claude && typeof window.claude.use === 'function') db = await window.claude.use('db'); } catch (e) { db = null; }
     if (db) { this.db = db; this.mode = 'db'; this.subscribe(); }
     else { this.mode = 'local'; this.loadLocal(); }
     this.emit();
@@ -422,6 +428,7 @@ function toast(msg) {
 }
 function errMsg(e) {
   const c = e && e.code;
+  if (c === 'permission-denied') return 'Firebase 보안 규칙이 쓰기를 막고 있습니다.';
   if (c === 'invalid_argument') return '저장 권한이 없거나 요청이 잘못되었습니다.';
   if (c === 'quota_exceeded') return '저장 공간이 가득 찼습니다. 오래된 기록을 지워 주세요.';
   if (c === 'resource_exhausted') return '요청이 너무 많습니다. 잠시 후 다시 시도하세요.';
