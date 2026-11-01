@@ -365,11 +365,17 @@ function streakMult(streak, won) {
   if (n < 2 || (streak > 0) !== won) return 1;
   return Math.round((1 + 0.1 * n) * 10) / 10;
 }
-function computeDeltas(blue, red, winner, map) {
+// 선호 포지션(주/부)이 있는데 그 밖으로 배정되면 true
+function isOffRole(p, role) { return !!role && (p.pos || []).length > 0 && !p.pos.includes(role); }
+// roles: {id: 포지션}. 비선호 포지션으로 진 선수는 감점을 절반으로
+function computeDeltas(blue, red, winner, map, roles = {}) {
   const rb = teamAvg(blue, map), rr = teamAvg(red, map);
   const eBlue = expected(rb, rr);
   const deltas = {};
-  const one = (id, won, e) => Math.round(kFactor(map[id].games) * streakMult(map[id].setStreak, won) * ((won ? 1 : 0) - e));
+  const one = (id, won, e) => {
+    const d = kFactor(map[id].games) * streakMult(map[id].setStreak, won) * ((won ? 1 : 0) - e);
+    return Math.round(!won && isOffRole(map[id], roles[id]) ? d / 2 : d);
+  };
   for (const id of blue) deltas[id] = one(id, winner === 'blue', eBlue);
   for (const id of red) deltas[id] = one(id, winner === 'red', 1 - eBlue);
   return { deltas, pBlue: Math.round(eBlue * 100) };
@@ -669,9 +675,9 @@ function renderTeams() {
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
-      const p = map[id], r = s.roles[id], off = (p.pos || []).length && !p.pos.includes(r);
+      const p = map[id], r = s.roles[id], off = isOffRole(p, r);
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정 · 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
@@ -930,7 +936,7 @@ $('result').addEventListener('click', async e => {
   if (!s) return;
   const ids = [...s.blue, ...s.red];
   if (ids.some(id => !map[id])) { toast('삭제된 선수가 있습니다. 시리즈를 종료하고 팀을 다시 짜 주세요.'); return; }
-  const { deltas, pBlue } = computeDeltas(s.blue, s.red, winner, map);
+  const { deltas, pBlue } = computeDeltas(s.blue, s.red, winner, map, s.roles);
   const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
   let r = null;
   const ok = await run(async () => { r = await repo.recordGame(s, winner, deltas, pBlue, names, map); });
