@@ -461,18 +461,19 @@ const repo = {
         const cur = await t.get(sref), had = await t.get(mref);
         const c = cur.exists ? cur.data() : null;
         if (had.exists || !c || !c.active || c.sid !== s.sid || c.score.blue + c.score.red !== played) throw { code: 'stale' };
-        const snaps = await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id))));
-        const prev = Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0]));
-        t.set(mref, { ...match, prevStreak: prev });
-        ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), streak: nextStreak(prev[id], won(id)), ts }));
+        // 연승/연패는 세트가 아니라 시리즈 결과로 센다. 시리즈가 끝나는 세트에서만 갱신
+        const snaps = finished ? await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id)))) : [];
+        const prev = finished ? Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0])) : null;
+        t.set(mref, prev ? { ...match, prevStreak: prev } : match);
+        ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)) } : {}), ts }));
         t.set(sref, seriesDoc(next, ts));
       });
     } else {
-      const prev = Object.fromEntries(ids.map(id => [id, map[id].streak || 0]));
-      await this.setMatch(mid, { ...match, prevStreak: prev });
+      const prev = finished ? Object.fromEntries(ids.map(id => [id, map[id].streak || 0])) : null;
+      await this.setMatch(mid, prev ? { ...match, prevStreak: prev } : match);
       for (const id of ids) {
         const p = map[id];
-        await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), streak: nextStreak(prev[id], won(id)), ts });
+        await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)) } : {}), ts });
       }
       await this.setSeries(next);
     }
@@ -490,7 +491,7 @@ const repo = {
       return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore };
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
-    // 이전 기록(prevStreak 없음)은 연승을 건드리지 않는다
+    // 시리즈를 끝낸 세트에만 prevStreak가 있다. 없으면 연승을 건드리지 않는다
     const streakOf = pid => (m.prevStreak && pid in m.prevStreak ? { streak: m.prevStreak[pid] } : {});
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + m.id);
@@ -626,7 +627,7 @@ function renderRanking() {
   const list = [...repo.players].sort((a, b) => b.mmr - a.mmr || byName(a, b));
   el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r">전적</th><th class="r">연속</th><th class="r">승률</th></tr></thead>
+      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r">전적</th><th class="r" title="3판 2선 시리즈 기준">연속</th><th class="r">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
         <td>${esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}</td>
