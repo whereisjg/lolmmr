@@ -84,6 +84,7 @@ input, select, textarea { font: inherit; color: var(--ink); background: var(--su
 textarea { width: 100%; resize: vertical; min-height: 84px; }
 .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; min-width: 0; }
 .field span { font-size: 12px; color: var(--muted); }
+.panel > .field { flex: none; }
 
 /* 참가자 칩 */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -146,6 +147,13 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .plist .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .plist .num { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .edit { border: 1px solid var(--gold); background: var(--gold-soft); }
+.pos-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.pos-pick button { padding: 6px 12px; font-size: 14px; border-radius: 999px; background: var(--surface-2); }
+.pos-pick button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.pos-pick button[data-rank="1"]::after { content: " 주"; font-size: 11px; opacity: .75; }
+.pos-pick button[data-rank="2"]::after { content: " 부"; font-size: 11px; opacity: .75; }
+.role { display: inline-block; min-width: 2.6em; font-size: 12px; color: var(--muted); font-weight: 700; }
+.role.off { color: var(--gold); }
 .empty { text-align: center; padding: 28px 12px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--on-ink); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgba(0,0,0,.2); z-index: 20; }
 @media (max-width: 380px) {
@@ -198,6 +206,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <label class="field"><span>이름</span><input id="editName" maxlength="20" autocomplete="off"></label>
         <label class="field"><span>MMR</span><input id="editMmr" type="number" inputmode="numeric" step="1" min="0" max="4000"></label>
       </div>
+      <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
       <div class="row between">
         <div class="row">
           <button class="primary" id="btnEditSave">저장</button>
@@ -211,7 +220,8 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <form class="row" id="addForm">
         <label class="field"><span>이름</span><input id="addName" maxlength="20" autocomplete="off" placeholder="소환사 이름"></label>
         <label class="field"><span>현재 티어 (시작 MMR)</span><select id="addTier"></select></label>
-        <button class="primary" type="submit" style="align-self:flex-end">추가</button>
+        <div class="field" style="flex-basis:100%"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="addPos"></div></div>
+        <button class="primary" type="submit">추가</button>
       </form>
       <details>
         <summary class="muted">이름 여러 개 한 번에 추가</summary>
@@ -236,6 +246,10 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 // ---------- 순수 로직
 const TIERS = [['아이언', 700], ['브론즈', 850], ['실버', 1000], ['골드', 1150], ['플래티넘', 1300], ['에메랄드', 1450], ['다이아 이상', 1600]];
 const PLACEMENT_GAMES = 10;
+const POSITIONS = [['top', '탑'], ['jungle', '정글'], ['mid', '미드'], ['adc', '원딜'], ['support', '서폿']];
+const POS_KEYS = POSITIONS.map(p => p[0]);
+const POS_LABEL = Object.fromEntries(POSITIONS);
+const POS_SLACK = 30; // 포지션을 맞추려고 허용하는 평균 MMR 차이 여유
 
 function expected(ra, rb) { return 1 / (1 + Math.pow(10, (rb - ra) / 400)); }
 function kFactor(games) { return games < PLACEMENT_GAMES ? 48 : 32; }
@@ -262,15 +276,43 @@ function splitAll(players) {
   return out.sort((x, y) => x.diff - y.diff);
 }
 
+// 한 팀 안에서 서로 다른 포지션 배정. 선호 밖 배정 수(off) 최소. 선호 없음 = 어디든 괜찮음
+function assignRoles(ids, prefs) {
+  let best = null;
+  const roles = {};
+  const go = (i, used, off) => {
+    if (best && off >= best.off) return;
+    if (i === ids.length) { best = { off, roles: { ...roles } }; return; }
+    const id = ids[i], pref = prefs[id] || [];
+    const order = pref.length ? [...pref, ...POS_KEYS.filter(p => !pref.includes(p))] : POS_KEYS;
+    for (const p of order) {
+      if (used.has(p)) continue;
+      used.add(p); roles[id] = p;
+      go(i + 1, used, off + (pref.length && !pref.includes(p) ? 1 : 0));
+      used.delete(p);
+    }
+  };
+  go(0, new Set(), 0);
+  return best;
+}
+
+// players: [{id, mmr, pos}]. 평균 차이 최소 + POS_SLACK 안에서 비선호 배정이 가장 적은 조합을 고른다
 function pickSplit(players, lastKey, rnd = Math.random) {
   const sorted = [...players].sort((x, y) => (x.id < y.id ? -1 : 1));
+  const prefs = Object.fromEntries(players.map(p => [p.id, p.pos || []]));
   const all = splitAll(sorted);
-  const min = all[0].diff;
-  let pool = all.filter(s => s.diff <= min + 10).slice(0, 12);
+  const near = all.filter(s => s.diff <= all[0].diff + POS_SLACK);
+  for (const s of near) {
+    const ra = assignRoles(s.a, prefs), rb = assignRoles(s.b, prefs);
+    s.off = ra.off + rb.off; s.roles = { ...ra.roles, ...rb.roles };
+  }
+  const bestOff = Math.min(...near.map(s => s.off));
+  const fit = near.filter(s => s.off === bestOff);
+  let pool = fit.filter(s => s.diff <= fit[0].diff + 10).slice(0, 12);
   if (pool.length > 1) pool = pool.filter(s => s.key !== lastKey);
   const s = pool[Math.floor(rnd() * pool.length)];
   const aBlue = rnd() < 0.5;
-  return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key };
+  return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key, roles: s.roles, off: s.off };
 }
 
 function computeDeltas(blue, red, winner, map) {
@@ -419,9 +461,10 @@ function renderTeams() {
   const rb = teamAvg(s.blue, map), rr = teamAvg(s.red, map);
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
   const card = (side, ids, avg, e) => {
-    const rows = [...ids].sort((a, b) => map[b].mmr - map[a].mmr).map(id => {
-      const p = map[id];
-      return `<li><span class="nm">${esc(p.name)}</span><span class="num">${p.mmr}</span></li>`;
+    const rank = id => POS_KEYS.indexOf(s.roles[id]);
+    const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
+      const p = map[id], r = s.roles[id], off = (p.pos || []).length && !p.pos.includes(r);
+      return `<li><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
@@ -433,7 +476,7 @@ function renderTeams() {
   res.hidden = false;
   res.innerHTML = `
     <div class="odds">
-      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${s.diff.toFixed(1)}</span><span class="r">${100 - pB}% 레드</span></div>
+      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${s.diff.toFixed(1)}${s.off ? ` · 비선호 ${s.off}명` : ''}</span><span class="r">${100 - pB}% 레드</span></div>
       <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
     </div>
     <div class="teams">${card('blue', s.blue, rb, eB)}${card('red', s.red, rr, 1 - eB)}</div>
@@ -471,7 +514,8 @@ function renderHistory() {
   if (!repo.matches.length) { el.innerHTML = '<h2>경기 기록</h2><div class="empty">아직 기록된 경기가 없습니다. 팀 짜기에서 승리 팀을 누르면 여기에 쌓입니다.</div>'; return; }
   const side = (m, ids, cls, label) => `<ul><li><span class="label ${cls}">${label}</span></li>${ids.map(id => {
     const d = (m.deltas || {})[id] || 0;
-    return `<li><span class="nm">${esc((m.names || {})[id] || '삭제된 선수')}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
+    const r = (m.roles || {})[id];
+    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const undo = state.confirmUndo
     ? `<div class="confirm"><span>${fmtTime(repo.matches[0].ts)} 경기를 취소하고 MMR을 되돌릴까요?</span><button class="danger small" id="btnUndoYes" ${state.busy ? 'disabled' : ''}>취소 확정</button><button class="small" id="btnUndoNo">아니오</button></div>`
@@ -489,7 +533,7 @@ function renderPlayers() {
   const list = [...repo.players].sort(byName);
   $('playerCount').textContent = list.length ? `${list.length}명` : '';
   $('playerList').innerHTML = list.length
-    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${esc(p.name)}</span><span class="num">MMR ${p.mmr} · ${p.games}판</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
+    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${esc(p.name)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
     : '<div class="empty">위에서 이름과 티어를 넣어 첫 선수를 추가하세요.</div>';
   const map = pmap();
   if (state.editId && !map[state.editId]) closeEdit();
@@ -510,7 +554,7 @@ window.addEventListener('hashchange', route);
 
 function makeSplit() {
   const map = pmap();
-  const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr }));
+  const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [] }));
   state.split = pickSplit(players, state.split ? state.split.key : state.lastKey);
   state.lastKey = state.split.key;
   renderTeams();
@@ -537,7 +581,7 @@ $('result').addEventListener('click', async e => {
   const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
   const ok = await run(async () => {
     const ts = Date.now();
-    await repo.addMatch({ ts, blue: s.blue, red: s.red, names, deltas, winner, pBlue });
+    await repo.addMatch({ ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue });
     await Promise.all(ids.map(id => {
       const p = map[id], won = (s.blue.includes(id) ? 'blue' : 'red') === winner;
       return repo.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won ? 1 : 0), losses: p.losses + (won ? 0 : 1), ts });
@@ -574,14 +618,38 @@ $('history').addEventListener('click', async e => {
 function tierOptions(sel) { sel.innerHTML = TIERS.map(([n, m]) => `<option value="${m}" ${m === 1000 ? 'selected' : ''}>${n} · ${m}</option>`).join(''); }
 tierOptions($('addTier')); tierOptions($('bulkTier'));
 const nameTaken = (name, exceptId) => repo.players.some(p => p.id !== exceptId && p.name.toLowerCase() === name.toLowerCase());
-const fresh = (name, mmr) => ({ name, mmr, games: 0, wins: 0, losses: 0, ts: Date.now() });
+const fresh = (name, mmr, pos = []) => ({ name, mmr, pos, games: 0, wins: 0, losses: 0, ts: Date.now() });
+
+function posText(p) { return (p.pos || []).length ? p.pos.map(k => POS_LABEL[k]).join('/') : '포지션 미정'; }
+function getPos(el) { return el.dataset.v ? el.dataset.v.split(',') : []; }
+function setPos(el, v) {
+  el.dataset.v = v.join(',');
+  el.querySelectorAll('[data-p]').forEach(b => {
+    const i = v.indexOf(b.dataset.p);
+    b.setAttribute('aria-pressed', i >= 0); b.dataset.rank = i >= 0 ? i + 1 : '';
+  });
+}
+function posPicker(el) {
+  el.innerHTML = POSITIONS.map(([k, l]) => `<button type="button" data-p="${k}" aria-pressed="false">${l}</button>`).join('');
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    const k = b.dataset.p; let v = getPos(el);
+    if (v.includes(k)) v = v.filter(x => x !== k);
+    else if (v.length >= 2) { toast('선호 포지션은 2개까지 고를 수 있습니다.'); return; }
+    else v.push(k);
+    setPos(el, v);
+  });
+}
+posPicker($('addPos')); posPicker($('editPos'));
 
 $('addForm').addEventListener('submit', async e => {
   e.preventDefault();
   const name = $('addName').value.trim().slice(0, 20);
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
-  if (await run(() => repo.addPlayer(fresh(name, +$('addTier').value)))) { $('addName').value = ''; toast(`${name} 추가됨`); }
+  if (await run(() => repo.addPlayer(fresh(name, +$('addTier').value, getPos($('addPos')))))) {
+    $('addName').value = ''; setPos($('addPos'), []); toast(`${name} 추가됨`);
+  }
 });
 $('bulkForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -600,7 +668,7 @@ $('playerList').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
-  $('editName').value = p.name; $('editMmr').value = p.mmr;
+  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []);
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
 });
@@ -610,7 +678,7 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
-  if (await run(() => repo.updatePlayer(id, { name, mmr, ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('btnEditDelete').addEventListener('click', async () => {
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
