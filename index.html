@@ -101,6 +101,9 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .odds-labels .b { color: var(--blue); } .odds-labels .r { color: var(--red); }
 .bar { height: 10px; border-radius: 999px; background: var(--red); overflow: hidden; display: flex; }
 .bar i { display: block; height: 100%; background: var(--blue); transition: width .35s ease; }
+.series { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.series .score { font-size: 26px; font-weight: 700; letter-spacing: 0.04em; }
+.series .b { color: var(--blue); } .series .r { color: var(--red); }
 .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .team { border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 1px solid var(--line); }
 .team.blue { background: var(--blue-soft); border-color: var(--blue); }
@@ -250,6 +253,7 @@ const POSITIONS = [['top', '탑'], ['jungle', '정글'], ['mid', '미드'], ['ad
 const POS_KEYS = POSITIONS.map(p => p[0]);
 const POS_LABEL = Object.fromEntries(POSITIONS);
 const POS_SLACK = 30; // 포지션을 맞추려고 허용하는 평균 MMR 차이 여유
+const SERIES_WINS = 2; // 3판 2선
 
 function expected(ra, rb) { return 1 / (1 + Math.pow(10, (rb - ra) / 400)); }
 function kFactor(games) { return games < PLACEMENT_GAMES ? 48 : 32; }
@@ -405,7 +409,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
 const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
-  split: null, lastKey: null, busy: false, confirmUndo: false, editId: null, confirmDelete: false
+  split: (() => { try { const s = JSON.parse(lsGet('mmr-split') || 'null'); return s && s.score && s.roles ? s : null; } catch (e) { return null; } })(), lastKey: null, busy: false, confirmUndo: false, editId: null, confirmDelete: false
 };
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
 const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
@@ -452,13 +456,17 @@ function renderTeams() {
   }
   const ok = n >= 2 && n <= 10 && n % 2 === 0;
   $('selCount').innerHTML = `<b class="num">${n}</b>명 선택 · ${ok ? '팀 짜기 가능' : '2~10명, 짝수'}`;
-  $('btnSplit').disabled = !ok || state.busy;
-  $('btnClearSel').disabled = !n;
+  $('btnSplit').disabled = !ok || state.busy || inSeries();
+  $('btnClearSel').disabled = !n || inSeries();
 
   const res = $('result');
+  if (state.split && repo.players.length && [...state.split.blue, ...state.split.red].some(id => !map[id])) state.split = null;
+  lsSet('mmr-split', JSON.stringify(state.split));
   const s = state.split;
-  if (!s || [...s.blue, ...s.red].some(id => !map[id])) { res.hidden = true; state.split = null; return; }
+  if (!s || !repo.players.length) { res.hidden = true; return; }
   const rb = teamAvg(s.blue, map), rr = teamAvg(s.red, map);
+  const played = s.score.blue + s.score.red;
+  const offCount = [...s.blue, ...s.red].filter(id => (map[id].pos || []).length && !map[id].pos.includes(s.roles[id])).length;
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
@@ -474,18 +482,23 @@ function renderTeams() {
     </div>`;
   };
   res.hidden = false;
+  const dis = state.busy ? 'disabled' : '';
   res.innerHTML = `
+    <div class="series">
+      <span class="label">3판 2선 · ${played + 1}세트</span>
+      <span class="score num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></span>
+    </div>
     <div class="odds">
-      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${s.diff.toFixed(1)}${s.off ? ` · 비선호 ${s.off}명` : ''}</span><span class="r">${100 - pB}% 레드</span></div>
+      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${Math.abs(rb - rr).toFixed(1)}${offCount ? ` · 비선호 ${offCount}명` : ''}</span><span class="r">${100 - pB}% 레드</span></div>
       <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
     </div>
     <div class="teams">${card('blue', s.blue, rb, eB)}${card('red', s.red, rr, 1 - eB)}</div>
     <div class="actions">
-      <button id="btnReroll" ${state.busy ? 'disabled' : ''}>다시 짜기</button>
-      <button class="blue" data-win="blue" ${state.busy ? 'disabled' : ''}>블루 승리</button>
-      <button class="red" data-win="red" ${state.busy ? 'disabled' : ''}>레드 승리</button>
+      ${played ? `<button id="btnEndSeries" ${dis}>시리즈 종료</button>` : `<button id="btnReroll" ${dis}>다시 짜기</button>`}
+      <button class="blue" data-win="blue" ${dis}>블루 승리</button>
+      <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
-    <span class="muted">결과는 한 명만 기록하세요. 두 명이 누르면 두 번 반영됩니다.</span>`;
+    <span class="muted">${played ? '시리즈가 끝날 때까지 팀이 유지됩니다. MMR은 세트마다 반영됩니다. ' : ''}결과는 한 명만 기록하세요. 두 명이 누르면 두 번 반영됩니다.</span>`;
 }
 
 function renderRanking() {
@@ -523,7 +536,7 @@ function renderHistory() {
   el.innerHTML = `<div class="row between"><h2>경기 기록</h2><span class="muted">최근 ${repo.matches.length}경기</span></div>
     <div>${undo}</div>
     ${repo.matches.map(m => `<div class="match">
-      <div class="match-head"><span class="num">${fmtTime(m.ts)}</span>
+      <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}</span>
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
     </div>`).join('')}`;
@@ -555,24 +568,30 @@ window.addEventListener('hashchange', route);
 function makeSplit() {
   const map = pmap();
   const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [] }));
-  state.split = pickSplit(players, state.split ? state.split.key : state.lastKey);
-  state.lastKey = state.split.key;
+  const p = pickSplit(players, state.split ? state.split.key : state.lastKey);
+  state.split = { blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 } };
+  state.lastKey = p.key;
   renderTeams();
 }
+const inSeries = () => state.split && state.split.score.blue + state.split.score.red > 0;
 
 $('chips').addEventListener('click', e => {
   const b = e.target.closest('[data-pick]'); if (!b) return;
+  if (inSeries()) { toast('시리즈 중에는 참가자를 바꿀 수 없습니다. 시리즈 종료 후 바꾸세요.'); return; }
   const id = b.dataset.pick;
   if (state.selected.has(id)) state.selected.delete(id);
   else if (state.selected.size >= 10) { toast('한 판은 최대 10명입니다.'); return; }
   else state.selected.add(id);
   state.split = null; saveSel(); renderTeams();
 });
-$('btnClearSel').addEventListener('click', () => { state.selected.clear(); state.split = null; saveSel(); renderTeams(); });
+$('btnClearSel').addEventListener('click', () => {
+  if (inSeries()) { toast('시리즈 중에는 참가자를 바꿀 수 없습니다. 시리즈 종료 후 바꾸세요.'); return; }
+  state.selected.clear(); state.split = null; saveSel(); renderTeams(); });
 $('btnSplit').addEventListener('click', makeSplit);
 
 $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReroll') return makeSplit();
+  if (e.target.id === 'btnEndSeries') { state.split = null; renderTeams(); toast('시리즈를 종료했습니다.'); return; }
   const w = e.target.closest('[data-win]'); if (!w) return;
   const winner = w.dataset.win, s = state.split, map = pmap();
   const ids = [...s.blue, ...s.red];
@@ -581,19 +600,33 @@ $('result').addEventListener('click', async e => {
   const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
   const ok = await run(async () => {
     const ts = Date.now();
-    await repo.addMatch({ ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue });
+    await repo.addMatch({ ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game: s.score.blue + s.score.red + 1 });
     await Promise.all(ids.map(id => {
       const p = map[id], won = (s.blue.includes(id) ? 'blue' : 'red') === winner;
       return repo.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won ? 1 : 0), losses: p.losses + (won ? 0 : 1), ts });
     }));
   });
   if (ok) {
-    const wId = (winner === 'blue' ? s.blue : s.red)[0];
-    state.split = null;
-    toast(`${winner === 'blue' ? '블루' : '레드'} 승리 기록됨 · 승리팀 ${signed(deltas[wId])}`);
+    const wId = (winner === 'blue' ? s.blue : s.red)[0], wName = winner === 'blue' ? '블루' : '레드';
+    s.score[winner]++;
+    if (s.score[winner] >= SERIES_WINS) {
+      toast(`${wName} 시리즈 승리 ${s.score.blue}:${s.score.red} · 마지막 세트 ${signed(deltas[wId])}`);
+      state.split = null;
+    } else toast(`${wName} 승리 기록됨 · ${s.score.blue}:${s.score.red} · 승리팀 ${signed(deltas[wId])}`);
     renderTeams();
   }
 });
+
+// 취소한 세트의 시리즈를 팀 짜기 화면에 되살린다 (진행 중 시리즈가 같거나 없을 때만)
+function restoreSeries(m) {
+  const s = state.split;
+  if (s && s.sid === m.series) { s.score[m.winner] = Math.max(0, s.score[m.winner] - 1); return; }
+  if (s && inSeries()) return;
+  const score = { blue: 0, red: 0 };
+  repo.matches.filter(x => x.series === m.series && x.id !== m.id).forEach(x => { score[x.winner]++; });
+  state.split = { blue: m.blue, red: m.red, roles: m.roles || {}, key: '', sid: m.series, score };
+  state.selected = new Set([...m.blue, ...m.red]); saveSel();
+}
 
 $('history').addEventListener('click', async e => {
   const id = e.target.id;
@@ -610,7 +643,9 @@ $('history').addEventListener('click', async e => {
       }));
       await repo.deleteMatch(m.id);
     });
-    state.confirmUndo = false; renderHistory();
+    state.confirmUndo = false;
+    if (ok && m.series) restoreSeries(m);
+    renderAll();
     if (ok) toast('마지막 경기를 취소했습니다.');
   }
 });

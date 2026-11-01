@@ -18,8 +18,9 @@
 
 ## 데이터 모델 (db 컬렉션)
 - `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`, `ts`
-- `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %)
-- 경기 기록 순서: `matches` 추가 → 선수별 `players` 갱신. 취소는 `deltas`를 역으로 적용 후 경기 삭제
+- `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %)
+- 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 진행 중 시리즈는 기기별 `localStorage` `mmr-split`에 저장(공유 안 됨). 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
+- 경기 기록 순서: `matches` 추가 → 선수별 `players` 갱신. 취소는 `deltas`를 역으로 적용 후 경기 삭제. 취소한 세트의 시리즈는 팀 짜기 화면에 점수를 되돌려 복원
 - 규칙은 기본값(Contributor 이상 쓰기). 한 판 기록은 한 명만 누른다 (중복 반영 방지 장치 없음)
 - `localStorage` 모드: 키 `mmr-balancer-v1`에 `{players:{}, matches:{}}`. 참가자 선택은 `mmr-sel`
 
