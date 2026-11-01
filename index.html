@@ -671,7 +671,7 @@ function renderTeams() {
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = (p.pos || []).length && !p.pos.includes(r);
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승' : '연패'}. 같은 결과면 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승' : '연패'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
