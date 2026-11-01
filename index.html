@@ -465,7 +465,7 @@ const repo = {
         const snaps = finished ? await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id)))) : [];
         const prev = finished ? Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0])) : null;
         t.set(mref, prev ? { ...match, prevStreak: prev } : match);
-        ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)) } : {}), ts }));
+        ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: inc(won(id) ? 1 : 0), sLosses: inc(won(id) ? 0 : 1) } : {}), ts }));
         t.set(sref, seriesDoc(next, ts));
       });
     } else {
@@ -473,7 +473,7 @@ const repo = {
       await this.setMatch(mid, prev ? { ...match, prevStreak: prev } : match);
       for (const id of ids) {
         const p = map[id];
-        await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)) } : {}), ts });
+        await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: (p.sWins || 0) + (won(id) ? 1 : 0), sLosses: (p.sLosses || 0) + (won(id) ? 0 : 1) } : {}), ts });
       }
       await this.setSeries(next);
     }
@@ -492,21 +492,22 @@ const repo = {
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
     // 시리즈를 끝낸 세트에만 prevStreak가 있다. 없으면 연승을 건드리지 않는다
-    const streakOf = pid => (m.prevStreak && pid in m.prevStreak ? { streak: m.prevStreak[pid] } : {});
+    const ended = pid => m.prevStreak && pid in m.prevStreak;
+    const streakOf = pid => (ended(pid) ? { streak: m.prevStreak[pid] } : {});
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + m.id);
       await this.db.runTransaction(async t => {
         const had = await t.get(mref), cur = await t.get(sref);
         if (!had.exists) throw { code: 'stale' };
         const c = cur.exists && cur.data().active ? cur.data() : null;
-        pids.forEach(pid => t.update(this.db.doc('players/' + pid), { mmr: inc(-m.deltas[pid]), games: inc(-1), wins: inc(won(pid) ? -1 : 0), losses: inc(won(pid) ? 0 : -1), ...streakOf(pid), ts }));
+        pids.forEach(pid => t.update(this.db.doc('players/' + pid), { mmr: inc(-m.deltas[pid]), games: inc(-1), wins: inc(won(pid) ? -1 : 0), losses: inc(won(pid) ? 0 : -1), ...streakOf(pid), ...(ended(pid) ? { sWins: inc(won(pid) ? -1 : 0), sLosses: inc(won(pid) ? 0 : -1) } : {}), ts }));
         t.delete(mref);
         t.set(sref, seriesDoc(nextFor(c), ts));
       });
     } else {
       for (const pid of pids) {
         const p = map[pid], d = m.deltas[pid];
-        await this.updatePlayer(pid, { mmr: p.mmr - d, games: Math.max(0, p.games - 1), wins: Math.max(0, p.wins - (won(pid) ? 1 : 0)), losses: Math.max(0, p.losses - (won(pid) ? 0 : 1)), ...streakOf(pid), ts });
+        await this.updatePlayer(pid, { mmr: p.mmr - d, games: Math.max(0, p.games - 1), wins: Math.max(0, p.wins - (won(pid) ? 1 : 0)), losses: Math.max(0, p.losses - (won(pid) ? 0 : 1)), ...streakOf(pid), ...(ended(pid) ? { sWins: Math.max(0, (p.sWins || 0) - (won(pid) ? 1 : 0)), sLosses: Math.max(0, (p.sLosses || 0) - (won(pid) ? 0 : 1)) } : {}), ts });
       }
       await this.deleteMatch(m.id);
       await this.setSeries(nextFor(this.series));
@@ -627,18 +628,23 @@ function renderRanking() {
   const list = [...repo.players].sort((a, b) => b.mmr - a.mmr || byName(a, b));
   el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r">전적</th><th class="r" title="3판 2선 시리즈 기준">연속</th><th class="r">승률</th></tr></thead>
+      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="3판 2선 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
         <td>${esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}</td>
         <td class="r mmr">${p.mmr}</td>
-        <td class="r num">${p.wins}승 ${p.losses}패</td>
+        <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패</td>
+        <td class="r num muted">${p.wins}-${p.losses}</td>
         <td class="r num">${streakText(p.streak)}</td>
-        <td class="r num">${p.games ? Math.round(p.wins / p.games * 100) + '%' : '–'}</td>
+        <td class="r num">${seriesRate(p)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
 }
 
+function seriesRate(p) {
+  const n = (p.sWins || 0) + (p.sLosses || 0);
+  return n ? Math.round((p.sWins || 0) / n * 100) + '%' : '–';
+}
 function streakText(n) {
   if (n >= 2) return `<span class="up">${n}연승</span>`;
   if (n <= -2) return `<span class="down">${-n}연패</span>`;
