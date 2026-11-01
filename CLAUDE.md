@@ -20,7 +20,7 @@
 ## 데이터 모델 (db 컬렉션)
 - `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`(세트 기준), `sWins`, `sLosses`(시리즈 기준, 시리즈가 끝나는 세트에서만 갱신), `streak`(시리즈 기준 연승 양수/연패 음수, 시리즈가 끝나는 세트에서만 `nextStreak`로 갱신. `시리즈 종료`로 중단하면 변화 없음), `ts`
 - `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %), `prevStreak{id:n}`(시리즈를 끝낸 세트에만. 취소 시 되돌릴 이전 연속 값)
-- `series/current`: 진행 중 시리즈 공유 문서. `active`, `sid`, `blue[]`, `red[]`, `roles`, `key`, `score{blue,red}`, `ts`. 끝나면 `{active:false}`
+- `series/current`: 진행 중 시리즈 공유 문서. `active`, `sid`, `blue[]`, `red[]`, `roles`, `key`, `score{blue,red}`, `done`, `winner`, `ts`. 시리즈가 끝나면 `done:true`로 결과를 남기고(같은 팀으로 한 번 더 / 결과 닫기), 닫으면 `{active:false}`
 - 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
 - 기록/취소는 `repo.recordGame`/`repo.undoGame`. Firebase는 transaction + `FieldValue.increment`로 처리하고 경기 id를 `{sid}-g{세트}`로 고정해 중복 기록을 막는다(충돌 시 code `stale`). 아티팩트 db/local은 순차 쓰기
 - 같은 팀/다른 팀 조건: 기기별 `localStorage` `mmr-cons` `{same:[[id..]], diff:[[a,b]]}`. 같은 팀 묶음 최대 5명(겹치면 합침), 다른 팀은 2명 쌍. `pickSplit`의 `fitsCons`로 조합을 거른 뒤 기존 규칙 적용. 만족하는 조합이 없으면 null
@@ -36,7 +36,7 @@
 
 ## 화면 구성
 - 탭은 hash 라우팅: `#teams`, `#ranking`, `#history`, `#players`
-- 팀 짜기: 참가자 선택 칩 → 팀 짜기 → 승률 막대와 두 팀 카드(배정 포지션, 비선호 배정은 금색, 예상 증감 표시) → 다시 짜기 / 블루 승리 / 레드 승리
+- 팀 짜기: 참가자 선택 칩 → 팀 짜기 또는 직접 짜기(MMR 순 번갈아 배정 후 시작) → 1세트 전에는 선수를 눌러 상대 팀 선수와 맞바꾸기(포지션 재배정) → 승률 막대와 두 팀 카드(배정 포지션, 비선호 배정은 금색, 예상 증감 표시) → 다시 짜기 / 블루 승리 / 레드 승리
 - 순위: MMR 내림차순, 시리즈 전적, 세트 전적, 연속(시리즈 기준 2연승/2연패 이상), 시리즈 승률, 배치(10판 미만) 표시
 - 기록: 최근 30경기, 선수별 증감, 마지막 경기 취소(2단계 확인)
 - 선수: 개별 추가(선호 포지션 선택), 이름 일괄 추가(줄바꿈/쉼표), 편집 패널(이름, MMR), 삭제(2단계 확인)

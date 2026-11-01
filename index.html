@@ -127,6 +127,10 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .team li .num { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .swing { font-family: var(--font-num); font-size: 12px; color: var(--muted); }
 .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.actions.two { grid-template-columns: 1fr 1fr; }
+.team li.swappable { cursor: pointer; border-radius: 6px; margin: 0 -6px; padding: 2px 6px; }
+.team li.swappable:hover { background: var(--surface); }
+.team li.swap-on { background: var(--gold-soft); outline: 2px solid var(--gold); }
 
 /* 순위 */
 .table-wrap { overflow-x: auto; }
@@ -198,6 +202,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <div class="cons" id="cons"></div>
       <div class="row">
         <button class="primary" id="btnSplit">팀 짜기</button>
+        <button id="btnManual">직접 짜기</button>
         <button id="btnClearSel">선택 해제</button>
       </div>
     </div>
@@ -452,7 +457,7 @@ const repo = {
     const ids = [...s.blue, ...s.red], won = id => (s.blue.includes(id) ? 'blue' : 'red') === winner;
     const score = { ...s.score, [winner]: s.score[winner] + 1 };
     const finished = score[winner] >= SERIES_WINS;
-    const next = finished ? null : { ...s, score };
+    const next = { ...s, score, done: finished, winner: finished ? winner : null }; // 끝나도 결과를 화면에 남긴다
     const mid = s.sid + '-g' + game;
     const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game };
     if (this.kind === 'firebase') {
@@ -460,7 +465,7 @@ const repo = {
       await this.db.runTransaction(async t => {
         const cur = await t.get(sref), had = await t.get(mref);
         const c = cur.exists ? cur.data() : null;
-        if (had.exists || !c || !c.active || c.sid !== s.sid || c.score.blue + c.score.red !== played) throw { code: 'stale' };
+        if (had.exists || !c || !c.active || c.done || c.sid !== s.sid || c.score.blue + c.score.red !== played) throw { code: 'stale' };
         // 연승/연패는 세트가 아니라 시리즈 결과로 센다. 시리즈가 끝나는 세트에서만 갱신
         const snaps = finished ? await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id)))) : [];
         const prev = finished ? Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0])) : null;
@@ -486,8 +491,8 @@ const repo = {
     this.matches.filter(x => x.series === m.series && x.id !== m.id).forEach(x => { restore[x.winner]++; });
     const nextFor = c => {
       if (!m.series) return c;
-      if (c && c.sid === m.series) return { ...c, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
-      if (c && c.score.blue + c.score.red > 0) return c; // 다른 시리즈가 진행 중이면 그대로
+      if (c && c.sid === m.series) return { ...c, done: false, winner: null, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
+      if (c && !c.done && c.score.blue + c.score.red > 0) return c; // 다른 시리즈가 진행 중이면 그대로
       return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore };
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
@@ -516,8 +521,8 @@ const repo = {
 };
 function seriesDoc(x, ts) {
   if (!x) return { active: false, ts };
-  const { sid, blue, red, roles, key, score } = x;
-  return { sid, blue, red, roles, key: key || '', score, active: true, ts };
+  const { sid, blue, red, roles, key, score, done, winner } = x;
+  return { sid, blue, red, roles, key: key || '', score, done: !!done, winner: winner || null, active: true, ts };
 }
 
 // ---------- 화면 상태
@@ -527,7 +532,7 @@ const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
 const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
-  picking: null, pick: new Set(),
+  picking: null, pick: new Set(), swapId: null,
   lastKey: null, busy: false, confirmUndo: false, editId: null, confirmDelete: false
 };
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
@@ -581,6 +586,7 @@ function renderTeams() {
   $('selCount').innerHTML = `<b class="num">${n}</b>명 선택 · ${ok ? '팀 짜기 가능' : '2~10명, 짝수'}`;
   $('btnSplit').disabled = !ok || state.busy || inSeries();
   $('btnClearSel').disabled = !n || inSeries();
+  $('btnManual').disabled = !ok || state.busy || inSeries();
 
   const res = $('result');
   const s = repo.series;
@@ -589,24 +595,27 @@ function renderTeams() {
   const played = s.score.blue + s.score.red;
   const offCount = [...s.blue, ...s.red].filter(id => (map[id].pos || []).length && !map[id].pos.includes(s.roles[id])).length;
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
+  const canSwap = !played && !s.done;
+  if (!canSwap) state.swapId = null;
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = (p.pos || []).length && !p.pos.includes(r);
-      return `<li><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}</span><span class="num">${p.mmr}</span></li>`;
+      const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
       <div class="team-head"><span class="side">${side === 'blue' ? 'BLUE' : 'RED'}</span><span class="avg">평균 ${Math.round(avg)}</span></div>
       <ul>${rows}</ul>
-      <span class="swing" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</span>
+      ${s.done ? '' : `<span class="swing" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</span>`}
     </div>`;
   };
   res.hidden = false;
   const dis = state.busy ? 'disabled' : '';
   res.innerHTML = `
     <div class="series">
-      <span class="label">3판 2선 · ${played + 1}세트</span>
+      <span class="label">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : `3판 2선 · ${played + 1}세트`}</span>
       <span class="score num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></span>
     </div>
     <div class="odds">
@@ -614,12 +623,16 @@ function renderTeams() {
       <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
     </div>
     <div class="teams">${card('blue', s.blue, rb, eB)}${card('red', s.red, rr, 1 - eB)}</div>
-    <div class="actions">
+    ${s.done ? `<div class="actions two">
+      <button class="primary" id="btnAgain" ${dis}>같은 팀으로 한 번 더</button>
+      <button id="btnClose" ${dis}>결과 닫기</button>
+    </div>
+    <span class="muted">새로 짜려면 위에서 참가자를 고르고 팀 짜기를 누르세요.</span>` : `<div class="actions">
       ${played ? `<button id="btnEndSeries" ${dis}>시리즈 종료</button>` : `<button id="btnReroll" ${dis}>다시 짜기</button>`}
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
-    <span class="muted">${played ? '시리즈가 끝날 때까지 팀이 유지됩니다. MMR은 세트마다 반영됩니다. ' : ''}결과는 한 명만 기록하세요. 두 명이 누르면 두 번 반영됩니다.</span>`;
+    <span class="muted">${canSwap ? '선수를 누르고 상대 팀 선수를 누르면 서로 바뀝니다. ' : '시리즈가 끝날 때까지 팀이 유지됩니다. MMR은 세트마다 반영됩니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
 function renderRanking() {
@@ -706,7 +719,28 @@ function makeSplit() {
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
   run(() => repo.setSeries({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 } }));
 }
-const inSeries = () => repo.series && repo.series.score.blue + repo.series.score.red > 0;
+function rolesFor(blue, red, map) {
+  const prefs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].pos || []]));
+  return { ...assignRoles(blue, prefs).roles, ...assignRoles(red, prefs).roles };
+}
+// 직접 짜기: MMR 순으로 번갈아 나눠 시작하고, 선수를 맞바꿔 조정한다
+function manualSplit() {
+  if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
+  const map = pmap(), ids = [...state.selected].sort((a, b) => map[b].mmr - map[a].mmr);
+  const blue = ids.filter((_, i) => i % 4 === 0 || i % 4 === 3), red = ids.filter((_, i) => i % 4 === 1 || i % 4 === 2);
+  state.swapId = null;
+  run(() => repo.setSeries({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 } }));
+}
+function swapPick(id) {
+  const s = repo.series; if (!s) return;
+  const a = state.swapId;
+  if (!a || a === id || s.blue.includes(a) === s.blue.includes(id)) { state.swapId = a === id ? null : id; renderTeams(); return; }
+  const sw = x => (x === a ? id : x === id ? a : x);
+  const blue = s.blue.map(sw), red = s.red.map(sw);
+  state.swapId = null;
+  run(() => repo.setSeries({ ...s, blue, red, roles: rolesFor(blue, red, pmap()), key: '' }));
+}
+const inSeries = () => repo.series && !repo.series.done && repo.series.score.blue + repo.series.score.red > 0;
 
 // 같은 팀 / 다른 팀 조건 (이 기기에 저장, 팀을 짤 때만 쓰임)
 const CONS_MAX = { same: 5, diff: 2 };
@@ -773,9 +807,17 @@ $('btnClearSel').addEventListener('click', () => {
   if (inSeries()) { toast('시리즈 중에는 참가자를 바꿀 수 없습니다. 시리즈 종료 후 바꾸세요.'); return; }
   state.selected.clear(); saveSel(); renderTeams(); });
 $('btnSplit').addEventListener('click', makeSplit);
+$('btnManual').addEventListener('click', manualSplit);
 
 $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReroll') return makeSplit();
+  const sw = e.target.closest('[data-swap]'); if (sw) return swapPick(sw.dataset.swap);
+  if (e.target.id === 'btnClose') { run(() => repo.setSeries(null)); return; }
+  if (e.target.id === 'btnAgain') {
+    const s = repo.series;
+    run(() => repo.setSeries({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 } }));
+    return;
+  }
   if (e.target.id === 'btnEndSeries') { if (await run(() => repo.setSeries(null))) toast('시리즈를 종료했습니다.'); return; }
   const w = e.target.closest('[data-win]'); if (!w) return;
   const winner = w.dataset.win, s = repo.series, map = pmap();
