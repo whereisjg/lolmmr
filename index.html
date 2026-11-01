@@ -340,7 +340,14 @@ function parseNames(text) {
 }
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyA_XSnKUdZDbkY_1-uiwI6rY08Gwkpat6Q',
+  authDomain: 'lolmmr-25378.firebaseapp.com',
+  projectId: 'lolmmr-25378',
+  storageBucket: 'lolmmr-25378.firebasestorage.app',
+  messagingSenderId: '945149894238',
+  appId: '1:945149894238:web:22910898673197e1381ecf'
+};
 const LS_KEY = 'mmr-balancer-v1';
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
