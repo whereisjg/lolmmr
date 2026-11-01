@@ -18,14 +18,18 @@
 - 변경 후 확인: 스크립트 구문(`node --check`), 순수 로직 샘플 실행, 폰 폭(약 400px)에서 가로 스크롤 없음
 
 ## 데이터 모델 (db 컬렉션)
-- `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`(세트 기준), `sWins`, `sLosses`(시리즈 기준, 시리즈가 끝나는 세트에서만 갱신), `streak`(시리즈 기준 연승 양수/연패 음수, 시리즈가 끝나는 세트에서만 `nextStreak`로 갱신. `시리즈 종료`로 중단하면 변화 없음), `ts`
-- `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %), `prevStreak{id:n}`(시리즈를 끝낸 세트에만. 취소 시 되돌릴 이전 연속 값)
+- `players/{id}`: `name`, `mmr`(정수), `pos`(선호 포지션 키 배열, 최대 2개, 0번이 주 포지션. 없거나 빈 배열 = 상관없음), `games`, `wins`, `losses`(세트 기준), `sWins`, `sLosses`(시리즈 기준, 시리즈가 끝나는 세트에서만 갱신), `riotNames[]`(결과창 닉네임 자동 연결용), `streak`(시리즈 기준 연승 양수/연패 음수, 시리즈가 끝나는 세트에서만 `nextStreak`로 갱신. `시리즈 종료`로 중단하면 변화 없음), `ts`
+- `matches/{id}`: `ts`, `blue[]`, `red[]`(선수 id), `names{id:이름}`, `roles{id:포지션}`(배정 포지션, 이전 기록엔 없음), `series`(시리즈 id), `game`(세트 번호), `deltas{id:증감}`, `winner`('blue'|'red'), `pBlue`(블루 예상 승률 %), `prevStreak{id:n}`(시리즈를 끝낸 세트에만. 취소 시 되돌릴 이전 연속 값), `stats{id:{team,name,champion,level,kills,deaths,assists,cs,gold,damage,items[],extra[{key,value}]}}`, `statsMeta{duration,winner,teams,notes,ts}`(결과창 인식 결과)
 - `series/current`: 진행 중 시리즈 공유 문서. `active`, `sid`, `blue[]`, `red[]`, `roles`, `key`, `score{blue,red}`, `done`, `winner`, `ts`. 시리즈가 끝나면 `done:true`로 결과를 남기고(같은 팀으로 한 번 더 / 결과 닫기), 닫으면 `{active:false}`
 - 3판 2선: 한 번 짠 팀으로 한쪽이 2승(`SERIES_WINS`)할 때까지 유지. MMR은 세트마다 갱신. 시리즈 중에는 참가자 변경과 다시 짜기 불가, `시리즈 종료`로 중단
 - 기록/취소는 `repo.recordGame`/`repo.undoGame`. Firebase는 transaction + `FieldValue.increment`로 처리하고 경기 id를 `{sid}-g{세트}`로 고정해 중복 기록을 막는다(충돌 시 code `stale`). 아티팩트 db/local은 순차 쓰기
 - 같은 팀/다른 팀 조건: 기기별 `localStorage` `mmr-cons` `{same:[[id..]], diff:[[a,b]]}`. 같은 팀 묶음 최대 5명(겹치면 합침), 다른 팀은 2명 쌍. `pickSplit`의 `fitsCons`로 조합을 거른 뒤 기존 규칙 적용. 만족하는 조합이 없으면 null
 - 취소는 `deltas`를 역으로 적용 후 경기 삭제하고, 그 세트의 시리즈를 점수를 되돌려 복원
 - `localStorage` 모드: 키 `mmr-balancer-v1`에 `{players:{}, matches:{}}`. 참가자 선택은 `mmr-sel`
+
+## 결과창 인식
+- `worker/scoreboard.js`: Cloudflare Worker. POST `{image(base64), mime}` → Gemini `generateContent`(responseSchema, 기본 `gemini-2.5-flash`, env `GEMINI_MODEL`) → `{result}`. 키는 Worker Secret `GEMINI_API_KEY`. Origin은 `ALLOWED_ORIGINS`만 허용
+- 사이트: `VISION_URL`이 있으면 기록 카드에 결과창 올리기 버튼. 이미지는 긴 변 2000px JPEG로 줄여 보냄 → `autoMap`(riotNames, 이름 일치/포함)으로 선수 연결 → 사용자가 확인 후 `repo.updateMatch`로 저장, 연결한 닉네임은 `riotNames`에 추가
 
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600

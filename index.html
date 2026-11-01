@@ -154,6 +154,12 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .match .cols li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .match .cols .label.b { color: var(--blue); } .match .cols .label.r { color: var(--red); }
 .up { color: var(--good); } .down { color: var(--bad); }
+.kda { font-size: 11px; color: var(--muted); font-family: var(--font-num); white-space: nowrap; }
+.shot { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.shot-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.shot-who { min-width: 0; overflow-wrap: anywhere; }
+.shot-who .b { color: var(--blue); }
+.shot select { padding: 5px 8px; font-size: 13px; max-width: 45%; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; background: var(--red-soft); border: 1px solid var(--bad); font-size: 14px; }
 
 /* 선수 */
@@ -215,6 +221,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 
   <section data-view="history" hidden>
     <div class="panel" id="history"></div>
+    <input type="file" id="shotInput" accept="image/*" hidden>
   </section>
 
   <section data-view="players" hidden>
@@ -375,6 +382,8 @@ const FIREBASE_CONFIG = {
   messagingSenderId: '945149894238',
   appId: '1:945149894238:web:22910898673197e1381ecf'
 };
+// 결과창 인식 Cloudflare Worker 주소 (worker/scoreboard.js). 비어 있으면 업로드 버튼을 숨긴다
+const VISION_URL = '';
 const LS_KEY = 'mmr-balancer-v1';
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -441,6 +450,10 @@ const repo = {
   async setMatch(id, data) {
     if (this.mode === 'db') return this.db.doc('matches/' + id).set(data);
     this.local.matches[id] = data; this.saveLocal();
+  },
+  async updateMatch(id, patch) {
+    if (this.mode === 'db') return this.db.doc('matches/' + id).update(patch);
+    if (this.local.matches[id]) Object.assign(this.local.matches[id], patch); this.saveLocal();
   },
   async deleteMatch(id) {
     if (this.mode === 'db') return this.db.doc('matches/' + id).delete();
@@ -532,7 +545,7 @@ const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
 const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
-  picking: null, pick: new Set(), swapId: null,
+  picking: null, pick: new Set(), swapId: null, upload: null,
   lastKey: null, busy: false, confirmUndo: false, editId: null, confirmDelete: false
 };
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
@@ -667,13 +680,33 @@ function fmtTime(ts) {
   const d = new Date(ts), z = n => String(n).padStart(2, '0');
   return `${d.getMonth() + 1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`;
 }
+const kda = st => [st.kills, st.deaths, st.assists].map(v => (v == null ? '?' : v)).join('/');
+function uploadPanel(m) {
+  const u = state.upload;
+  if (u.loading) return '<div class="shot">결과창을 읽는 중입니다. 10~20초 걸릴 수 있습니다.</div>';
+  if (u.err) return `<div class="shot"><span class="down">${esc(u.err)}</span><div class="row"><button class="small" data-shot="${esc(m.id)}">다시 올리기</button><button class="small" id="btnShotCancel">닫기</button></div></div>`;
+  const ids = [...m.blue, ...m.red];
+  const rows = u.parsed.players.map((p, i) => `<div class="shot-row">
+      <span class="shot-who"><b class="${p.team === 'red' ? 'down' : p.team === 'blue' ? 'b' : ''}">${esc(p.name)}</b> · ${esc(p.champion)} · <span class="num">${kda(p)}</span></span>
+      <select data-row="${i}" aria-label="${esc(p.name)} 선수 선택">
+        <option value="">선택 안 함</option>
+        ${ids.map(id => `<option value="${esc(id)}" ${u.map[i] === id ? 'selected' : ''}>${esc((m.names || {})[id] || id)}</option>`).join('')}
+      </select></div>`).join('');
+  return `<div class="shot">
+    <span class="muted">인식된 플레이어를 우리 선수와 연결하세요. 한 번 연결한 닉네임은 다음부터 자동으로 맞춰집니다.</span>
+    ${rows}
+    ${u.parsed.notes ? `<span class="muted">메모: ${esc(u.parsed.notes)}</span>` : ''}
+    <div class="row"><button class="small primary" id="btnShotSave" ${state.busy ? 'disabled' : ''}>저장</button><button class="small" id="btnShotCancel">취소</button></div>
+  </div>`;
+}
 function renderHistory() {
   const el = $('history');
   if (!repo.matches.length) { el.innerHTML = '<h2>경기 기록</h2><div class="empty">아직 기록된 경기가 없습니다. 팀 짜기에서 승리 팀을 누르면 여기에 쌓입니다.</div>'; return; }
   const side = (m, ids, cls, label) => `<ul><li><span class="label ${cls}">${label}</span></li>${ids.map(id => {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
-    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
+    const st = (m.stats || {})[id];
+    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const undo = state.confirmUndo
     ? `<div class="confirm"><span>${fmtTime(repo.matches[0].ts)} 경기를 취소하고 MMR을 되돌릴까요?</span><button class="danger small" id="btnUndoYes" ${state.busy ? 'disabled' : ''}>취소 확정</button><button class="small" id="btnUndoNo">아니오</button></div>`
@@ -684,6 +717,7 @@ function renderHistory() {
       <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}</span>
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
+      ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : VISION_URL ? `<div><button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 다시 올리기' : '결과창 올리기'}</button>${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}</div>` : ''}
     </div>`).join('')}`;
 }
 
@@ -836,7 +870,69 @@ $('result').addEventListener('click', async e => {
   }
 });
 
+// 결과창 업로드: 이미지 축소 → Worker → 선수 연결 → 경기에 저장
+function autoMap(m, players) {
+  const map = pmap(), ids = [...m.blue, ...m.red], used = new Set(), out = {};
+  const norm = x => String(x || '').toLowerCase().replace(/\s+/g, '').replace(/#.*/, '');
+  players.forEach((p, i) => {
+    const n = norm(p.name);
+    const hit = ids.find(id => !used.has(id) && ((map[id] && (map[id].riotNames || []).some(r => norm(r) === n)) || norm((m.names || {})[id]) === n))
+      || ids.find(id => !used.has(id) && n && norm((m.names || {})[id]) && n.includes(norm((m.names || {})[id])));
+    if (hit) { used.add(hit); out[i] = hit; }
+  });
+  return out;
+}
+async function shrink(file) {
+  const img = await createImageBitmap(file);
+  const k = Math.min(1, 2000 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.9).split(',')[1];
+}
+$('shotInput').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  const u = state.upload; if (!file || !u) return;
+  const m = repo.matches.find(x => x.id === u.mid); if (!m) return;
+  state.upload = { mid: u.mid, loading: true }; renderHistory();
+  try {
+    const res = await fetch(VISION_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: await shrink(file), mime: 'image/jpeg' }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.result) throw new Error(data.error || '결과창을 읽지 못했습니다.');
+    if (!(data.result.players || []).length) throw new Error('플레이어를 찾지 못했습니다. 결과창 전체가 보이게 다시 찍어 주세요.');
+    state.upload = { mid: u.mid, parsed: data.result, map: autoMap(m, data.result.players) };
+  } catch (err) {
+    state.upload = { mid: u.mid, err: err.message || '결과창을 읽지 못했습니다.' };
+  }
+  renderHistory();
+});
+$('history').addEventListener('change', e => {
+  const sel = e.target.closest('[data-row]'); if (!sel || !state.upload || !state.upload.map) return;
+  const i = +sel.dataset.row;
+  // 같은 선수를 두 줄에 연결하지 않도록 이전 연결은 푼다
+  for (const k of Object.keys(state.upload.map)) if (state.upload.map[k] === sel.value && +k !== i) delete state.upload.map[k];
+  if (sel.value) state.upload.map[i] = sel.value; else delete state.upload.map[i];
+  renderHistory();
+});
 $('history').addEventListener('click', async e => {
+  const shot = e.target.closest('[data-shot]');
+  if (shot) { state.upload = { mid: shot.dataset.shot }; $('shotInput').click(); return; }
+  if (e.target.id === 'btnShotCancel') { state.upload = null; renderHistory(); return; }
+  if (e.target.id === 'btnShotSave') {
+    const u = state.upload, m = repo.matches.find(x => x.id === u.mid); if (!m) return;
+    const stats = {}, pm = pmap();
+    Object.entries(u.map).forEach(([i, pid]) => { stats[pid] = u.parsed.players[i]; });
+    if (!Object.keys(stats).length) { toast('연결된 선수가 없습니다.'); return; }
+    const { duration = '', winner = 'unknown', teams = [], notes = '' } = u.parsed;
+    const ok = await run(async () => {
+      await repo.updateMatch(m.id, { stats, statsMeta: { duration, winner, teams, notes, ts: Date.now() } });
+      for (const [pid, st] of Object.entries(stats)) {
+        const p = pm[pid], names = (p && p.riotNames) || [];
+        if (p && st.name && !names.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...names, st.name] });
+      }
+    });
+    if (ok) { state.upload = null; toast(`${Object.keys(stats).length}명의 결과를 저장했습니다.`); renderHistory(); }
+    return;
+  }
   const id = e.target.id;
   if (id === 'btnUndo') { state.confirmUndo = true; renderHistory(); }
   else if (id === 'btnUndoNo') { state.confirmUndo = false; renderHistory(); }
