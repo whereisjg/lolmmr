@@ -154,6 +154,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .match .cols li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .match .cols .label.b { color: var(--blue); } .match .cols .label.r { color: var(--red); }
 .up { color: var(--good); } .down { color: var(--bad); }
+.kda.shield { color: var(--gold); }
 .kda { font-size: 11px; color: var(--muted); font-family: var(--font-num); white-space: nowrap; }
 .shot { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
 .shot-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
@@ -367,7 +368,7 @@ function streakMult(streak, won) {
 }
 // 선호 포지션(주/부)이 있는데 그 밖으로 배정되면 true
 function isOffRole(p, role) { return !!role && (p.pos || []).length > 0 && !p.pos.includes(role); }
-// roles: {id: 포지션}. 비선호 포지션으로 진 선수는 감점을 절반으로
+// roles: {id: 포지션}. 용맹의 방패: 비선호 포지션으로 진 선수는 감점을 절반으로
 function computeDeltas(blue, red, winner, map, roles = {}) {
   const rb = teamAvg(blue, map), rr = teamAvg(red, map);
   const eBlue = expected(rb, rr);
@@ -677,7 +678,7 @@ function renderTeams() {
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = isOffRole(p, r);
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '선호 밖 배정 · 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${off && !s.done ? ' <span class="kda shield" title="용맹의 방패: 선호 밖 포지션으로 배정돼 지면 감점이 절반입니다">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
@@ -694,7 +695,7 @@ function renderTeams() {
       <span class="score num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></span>
     </div>
     <div class="odds">
-      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${Math.abs(rb - rr).toFixed(1)}${offCount ? ` · 비선호 ${offCount}명` : ''}</span><span class="r">${100 - pB}% 레드</span></div>
+      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${Math.abs(rb - rr).toFixed(1)}${offCount ? ` · 용맹의 방패 ${offCount}명` : ''}</span><span class="r">${100 - pB}% 레드</span></div>
       <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
     </div>
     <div class="teams">${card('blue', s.blue, rb, eB)}${card('red', s.red, rr, 1 - eB)}</div>
