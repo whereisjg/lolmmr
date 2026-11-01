@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>내전 MMR 밸런서</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 한 열 콘솔. 상단 탭, 팀 짜기는 블루/레드 두 카드가 마주보는 구도 */
+:root {
+  --bg: #eef0f4;
+  --surface: #ffffff;
+  --surface-2: #f6f7fa;
+  --ink: #141823;
+  --muted: #5b6273;
+  --line: #d9dde6;
+  --blue: #2259c4;
+  --blue-soft: #e3ebfb;
+  --red: #c2343a;
+  --red-soft: #fae5e5;
+  --gold: #94690f;
+  --gold-soft: #f6ecd4;
+  --good: #1d7f4e;
+  --bad: #c2343a;
+  --on-ink: #ffffff;
+  --font-body: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-num: "Chakra Petch", "Noto Sans KR", ui-monospace, system-ui, sans-serif;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1017; --surface: #161a24; --surface-2: #1c212d; --ink: #e7e9ef; --muted: #959cad; --line: #2a3141;
+    --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716;
+    --good: #4cc488; --bad: #f07474; --on-ink: #0d1017; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1017; --surface: #161a24; --surface-2: #1c212d; --ink: #e7e9ef; --muted: #959cad; --line: #2a3141;
+  --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716;
+  --good: #4cc488; --bad: #f07474; --on-ink: #0d1017; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 16px; margin: 0; text-wrap: balance; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand .num { font-size: 12px; letter-spacing: 0.14em; color: var(--gold); font-weight: 700; }
+.pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); white-space: nowrap; }
+.pill.shared { color: var(--good); border-color: currentColor; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; }
+.tabs a { text-align: center; padding: 8px 4px; border-radius: 7px; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; }
+.tabs a[aria-current="page"] { background: var(--ink); color: var(--on-ink); }
+.tabs a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+section[data-view] { display: flex; flex-direction: column; gap: 14px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.between { justify-content: space-between; }
+.muted { color: var(--muted); font-size: 13px; }
+.label { font-size: 12px; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 9px 14px; font-weight: 500; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+button.blue { background: var(--blue); color: var(--surface); border-color: var(--blue); }
+button.red { background: var(--red); color: var(--surface); border-color: var(--red); }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button.small { padding: 5px 10px; font-size: 13px; }
+button.link { border: 0; background: none; padding: 0; color: var(--blue); text-decoration: underline; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+textarea { width: 100%; resize: vertical; min-height: 84px; }
+.field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; min-width: 0; }
+.field span { font-size: 12px; color: var(--muted); }
+
+/* 참가자 칩 */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 11px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); font-weight: 500; }
+.chip .num { font-size: 12px; color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.chip[aria-pressed="true"] .num { color: var(--on-ink); opacity: 0.7; }
+.count { font-size: 13px; color: var(--muted); }
+.count b { color: var(--ink); }
+
+/* 승률 막대 */
+.odds { display: flex; flex-direction: column; gap: 6px; }
+.odds-labels { display: flex; justify-content: space-between; font-family: var(--font-num); font-weight: 700; font-size: 14px; }
+.odds-labels .b { color: var(--blue); } .odds-labels .r { color: var(--red); }
+.bar { height: 10px; border-radius: 999px; background: var(--red); overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; background: var(--blue); transition: width .35s ease; }
+.teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.team { border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 1px solid var(--line); }
+.team.blue { background: var(--blue-soft); border-color: var(--blue); }
+.team.red { background: var(--red-soft); border-color: var(--red); }
+.team-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.team-head .side { font-family: var(--font-num); font-weight: 700; letter-spacing: 0.12em; font-size: 14px; }
+.team.blue .side { color: var(--blue); } .team.red .side { color: var(--red); }
+.team-head .avg { font-family: var(--font-num); font-size: 13px; color: var(--muted); }
+.team ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.team li { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; font-size: 14px; }
+.team li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.team li .num { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.swing { font-family: var(--font-num); font-size: 12px; color: var(--muted); }
+.actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+/* 순위 */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; }
+td.rank { font-family: var(--font-num); font-weight: 700; color: var(--muted); width: 2.5em; }
+tr.top1 td.rank { color: var(--gold); }
+td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); margin-left: 6px; font-weight: 700; vertical-align: 1px; }
+
+/* 기록 */
+.match { border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
+.match-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.win-b { color: var(--blue); font-weight: 700; } .win-r { color: var(--red); font-weight: 700; }
+.match .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.match .cols ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 14px; min-width: 0; }
+.match .cols li { display: flex; justify-content: space-between; gap: 6px; }
+.match .cols li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.match .cols .label.b { color: var(--blue); } .match .cols .label.r { color: var(--red); }
+.up { color: var(--good); } .down { color: var(--bad); }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; background: var(--red-soft); border: 1px solid var(--bad); font-size: 14px; }
+
+/* 선수 */
+.plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.plist li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.plist li:last-child { border-bottom: 0; }
+.plist .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.plist .num { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.edit { border: 1px solid var(--gold); background: var(--gold-soft); }
+.empty { text-align: center; padding: 28px 12px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--on-ink); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgba(0,0,0,.2); z-index: 20; }
+@media (max-width: 380px) {
+  .match .cols { grid-template-columns: 1fr; }
+  .tabs a { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>내전 MMR 밸런서</h1><span class="num">5V5</span></div>
+    <span class="pill" id="storePill">불러오는 중</span>
+  </header>
+
+  <nav class="tabs" aria-label="화면">
+    <a href="#teams" data-tab="teams">팀 짜기</a>
+    <a href="#ranking" data-tab="ranking">순위</a>
+    <a href="#history" data-tab="history">기록</a>
+    <a href="#players" data-tab="players">선수</a>
+  </nav>
+
+  <section data-view="teams">
+    <div class="panel">
+      <div class="row between">
+        <h2>오늘 참가자</h2>
+        <span class="count" id="selCount"></span>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="row">
+        <button class="primary" id="btnSplit">팀 짜기</button>
+        <button id="btnClearSel">선택 해제</button>
+      </div>
+    </div>
+    <div class="panel" id="result" hidden></div>
+  </section>
+
+  <section data-view="ranking" hidden>
+    <div class="panel" id="ranking"></div>
+  </section>
+
+  <section data-view="history" hidden>
+    <div class="panel" id="history"></div>
+  </section>
+
+  <section data-view="players" hidden>
+    <div class="panel edit" id="editPanel" hidden>
+      <h2>선수 편집</h2>
+      <div class="row">
+        <label class="field"><span>이름</span><input id="editName" maxlength="20" autocomplete="off"></label>
+        <label class="field"><span>MMR</span><input id="editMmr" type="number" inputmode="numeric" step="1" min="0" max="4000"></label>
+      </div>
+      <div class="row between">
+        <div class="row">
+          <button class="primary" id="btnEditSave">저장</button>
+          <button id="btnEditCancel">닫기</button>
+        </div>
+        <button class="danger" id="btnEditDelete">삭제</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>선수 추가</h2>
+      <form class="row" id="addForm">
+        <label class="field"><span>이름</span><input id="addName" maxlength="20" autocomplete="off" placeholder="소환사 이름"></label>
+        <label class="field"><span>현재 티어 (시작 MMR)</span><select id="addTier"></select></label>
+        <button class="primary" type="submit" style="align-self:flex-end">추가</button>
+      </form>
+      <details>
+        <summary class="muted">이름 여러 개 한 번에 추가</summary>
+        <form id="bulkForm" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <textarea id="bulkNames" placeholder="줄바꿈이나 쉼표로 구분&#10;예: 민준, 서연, 지호"></textarea>
+          <div class="row">
+            <select id="bulkTier" aria-label="일괄 추가 티어"></select>
+            <button type="submit">일괄 추가</button>
+          </div>
+        </form>
+      </details>
+    </div>
+    <div class="panel">
+      <div class="row between"><h2>선수 목록</h2><span class="muted" id="playerCount"></span></div>
+      <div id="playerList"></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+// ---------- 순수 로직
+const TIERS = [['아이언', 700], ['브론즈', 850], ['실버', 1000], ['골드', 1150], ['플래티넘', 1300], ['에메랄드', 1450], ['다이아 이상', 1600]];
+const PLACEMENT_GAMES = 10;
+
+function expected(ra, rb) { return 1 / (1 + Math.pow(10, (rb - ra) / 400)); }
+function kFactor(games) { return games < PLACEMENT_GAMES ? 48 : 32; }
+function teamAvg(ids, map) { return ids.reduce((s, id) => s + map[id].mmr, 0) / ids.length; }
+
+// players: [{id, mmr}] 정렬된 순서. 0번은 항상 A팀
+function splitAll(players) {
+  const n = players.length, half = n / 2, out = [];
+  const total = players.reduce((s, p) => s + p.mmr, 0);
+  const pick = (start, chosen, sum) => {
+    if (chosen.length === half) {
+      const a = chosen.map(i => players[i].id);
+      const set = new Set(chosen);
+      const b = players.filter((_, i) => !set.has(i)).map(p => p.id);
+      const diff = Math.abs(sum / half - (total - sum) / half);
+      out.push({ a, b, diff, key: a.join('|') });
+      return;
+    }
+    for (let i = start; i <= n - (half - chosen.length); i++) {
+      chosen.push(i); pick(i + 1, chosen, sum + players[i].mmr); chosen.pop();
+    }
+  };
+  pick(1, [0], players[0].mmr);
+  return out.sort((x, y) => x.diff - y.diff);
+}
+
+function pickSplit(players, lastKey, rnd = Math.random) {
+  const sorted = [...players].sort((x, y) => (x.id < y.id ? -1 : 1));
+  const all = splitAll(sorted);
+  const min = all[0].diff;
+  let pool = all.filter(s => s.diff <= min + 10).slice(0, 12);
+  if (pool.length > 1) pool = pool.filter(s => s.key !== lastKey);
+  const s = pool[Math.floor(rnd() * pool.length)];
+  const aBlue = rnd() < 0.5;
+  return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key };
+}
+
+function computeDeltas(blue, red, winner, map) {
+  const rb = teamAvg(blue, map), rr = teamAvg(red, map);
+  const eBlue = expected(rb, rr);
+  const deltas = {};
+  for (const id of blue) deltas[id] = Math.round(kFactor(map[id].games) * ((winner === 'blue' ? 1 : 0) - eBlue));
+  for (const id of red) deltas[id] = Math.round(kFactor(map[id].games) * ((winner === 'red' ? 1 : 0) - (1 - eBlue)));
+  return { deltas, pBlue: Math.round(eBlue * 100) };
+}
+
+function parseNames(text) {
+  const seen = new Set(), out = [];
+  for (const raw of text.split(/[\n,]/)) {
+    const n = raw.trim().slice(0, 20);
+    if (n && !seen.has(n.toLowerCase())) { seen.add(n.toLowerCase()); out.push(n); }
+  }
+  return out;
+}
+// ---------- 저장소
+const LS_KEY = 'mmr-balancer-v1';
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+const repo = {
+  mode: 'loading', players: [], matches: [], listeners: [], db: null, timer: null, stale: false,
+  onChange(fn) { this.listeners.push(fn); },
+  emit() { this.listeners.forEach(fn => fn()); },
+  async init() {
+    let db = null;
+    try { if (window.claude && typeof window.claude.use === 'function') db = await window.claude.use('db'); } catch (e) { db = null; }
+    if (db) { this.db = db; this.mode = 'db'; this.subscribe(); }
+    else { this.mode = 'local'; this.loadLocal(); }
+    this.emit();
+  },
+  subscribe() {
+    let got = { p: false, m: false };
+    this.timer = setTimeout(() => { this.stale = true; this.emit(); }, 10000);
+    const done = (k, snap) => {
+      if (!snap.metadata.fromCache) got[k] = true;
+      if (got.p && got.m) { clearTimeout(this.timer); this.stale = false; }
+    };
+    const fail = e => { clearTimeout(this.timer); this.stale = true; toast('공유 데이터 연결이 끊겼습니다. 새로고침해 주세요.'); this.emit(); };
+    this.db.collection('players').onSnapshot(snap => {
+      this.players = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      done('p', snap); this.emit();
+    }, fail);
+    this.db.collection('matches').orderBy('ts', 'desc').limit(30).onSnapshot(snap => {
+      this.matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      done('m', snap); this.emit();
+    }, fail);
+  },
+  loadLocal() {
+    let s = null;
+    try { s = JSON.parse(lsGet(LS_KEY) || 'null'); } catch (e) { s = null; }
+    this.local = s && s.players ? s : { players: {}, matches: {} };
+    this.syncLocal();
+  },
+  syncLocal() {
+    this.players = Object.entries(this.local.players).map(([id, d]) => ({ id, ...d }));
+    this.matches = Object.entries(this.local.matches).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.ts - a.ts).slice(0, 30);
+  },
+  saveLocal() { lsSet(LS_KEY, JSON.stringify(this.local)); this.syncLocal(); this.emit(); },
+  async addPlayer(data) {
+    if (this.mode === 'db') return this.db.collection('players').doc().set(data);
+    this.local.players[newId()] = data; this.saveLocal();
+  },
+  async updatePlayer(id, patch) {
+    if (this.mode === 'db') return this.db.doc('players/' + id).update(patch);
+    if (this.local.players[id]) Object.assign(this.local.players[id], patch); this.saveLocal();
+  },
+  async deletePlayer(id) {
+    if (this.mode === 'db') return this.db.doc('players/' + id).delete();
+    delete this.local.players[id]; this.saveLocal();
+  },
+  async addMatch(data) {
+    if (this.mode === 'db') return this.db.collection('matches').doc().set(data);
+    this.local.matches[newId()] = data; this.saveLocal();
+  },
+  async deleteMatch(id) {
+    if (this.mode === 'db') return this.db.doc('matches/' + id).delete();
+    delete this.local.matches[id]; this.saveLocal();
+  }
+};
+
+// ---------- 화면 상태
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
+const state = {
+  selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
+  split: null, lastKey: null, busy: false, confirmUndo: false, editId: null, confirmDelete: false
+};
+const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
+const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
+function saveSel() { lsSet('mmr-sel', JSON.stringify([...state.selected])); }
+
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+}
+function errMsg(e) {
+  const c = e && e.code;
+  if (c === 'invalid_argument') return '저장 권한이 없거나 요청이 잘못되었습니다.';
+  if (c === 'quota_exceeded') return '저장 공간이 가득 찼습니다. 오래된 기록을 지워 주세요.';
+  if (c === 'resource_exhausted') return '요청이 너무 많습니다. 잠시 후 다시 시도하세요.';
+  return '저장하지 못했습니다. 잠시 후 다시 시도하세요.';
+}
+async function run(fn) {
+  if (state.busy) return false;
+  state.busy = true; renderAll();
+  try { await fn(); return true; } catch (e) { toast(errMsg(e)); return false; }
+  finally { state.busy = false; renderAll(); }
+}
+
+// ---------- 렌더
+function renderHeader() {
+  const p = $('storePill');
+  if (repo.mode === 'loading') { p.textContent = '불러오는 중'; p.className = 'pill'; }
+  else if (repo.mode === 'db') { p.textContent = repo.stale ? '공유 저장 · 연결 확인 중' : '공유 저장'; p.className = 'pill shared'; }
+  else { p.textContent = '이 기기에만 저장'; p.className = 'pill'; }
+}
+
+function renderTeams() {
+  const map = pmap();
+  for (const id of [...state.selected]) if (!map[id]) state.selected.delete(id);
+  const n = state.selected.size;
+  const chips = $('chips');
+  if (!repo.players.length) {
+    chips.innerHTML = repo.mode === 'loading' ? '<span class="muted">선수 목록을 불러오는 중입니다.</span>'
+      : '<div class="empty" style="width:100%"><span>아직 등록된 선수가 없습니다.</span><a href="#players">선수 탭에서 이름을 추가하세요</a></div>';
+  } else {
+    chips.innerHTML = [...repo.players].sort(byName).map(p =>
+      `<button class="chip" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}">${esc(p.name)}<span class="num">${p.mmr}</span></button>`).join('');
+  }
+  const ok = n >= 2 && n <= 10 && n % 2 === 0;
+  $('selCount').innerHTML = `<b class="num">${n}</b>명 선택 · ${ok ? '팀 짜기 가능' : '2~10명, 짝수'}`;
+  $('btnSplit').disabled = !ok || state.busy;
+  $('btnClearSel').disabled = !n;
+
+  const res = $('result');
+  const s = state.split;
+  if (!s || [...s.blue, ...s.red].some(id => !map[id])) { res.hidden = true; state.split = null; return; }
+  const rb = teamAvg(s.blue, map), rr = teamAvg(s.red, map);
+  const eB = expected(rb, rr), pB = Math.round(eB * 100);
+  const card = (side, ids, avg, e) => {
+    const rows = [...ids].sort((a, b) => map[b].mmr - map[a].mmr).map(id => {
+      const p = map[id];
+      return `<li><span class="nm">${esc(p.name)}</span><span class="num">${p.mmr}</span></li>`;
+    }).join('');
+    const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
+    return `<div class="team ${side}">
+      <div class="team-head"><span class="side">${side === 'blue' ? 'BLUE' : 'RED'}</span><span class="avg">평균 ${Math.round(avg)}</span></div>
+      <ul>${rows}</ul>
+      <span class="swing" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</span>
+    </div>`;
+  };
+  res.hidden = false;
+  res.innerHTML = `
+    <div class="odds">
+      <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${s.diff.toFixed(1)}</span><span class="r">${100 - pB}% 레드</span></div>
+      <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
+    </div>
+    <div class="teams">${card('blue', s.blue, rb, eB)}${card('red', s.red, rr, 1 - eB)}</div>
+    <div class="actions">
+      <button id="btnReroll" ${state.busy ? 'disabled' : ''}>다시 짜기</button>
+      <button class="blue" data-win="blue" ${state.busy ? 'disabled' : ''}>블루 승리</button>
+      <button class="red" data-win="red" ${state.busy ? 'disabled' : ''}>레드 승리</button>
+    </div>
+    <span class="muted">결과는 한 명만 기록하세요. 두 명이 누르면 두 번 반영됩니다.</span>`;
+}
+
+function renderRanking() {
+  const el = $('ranking');
+  if (!repo.players.length) { el.innerHTML = '<h2>순위</h2><div class="empty">선수를 추가하면 MMR 순위가 여기에 표시됩니다.</div>'; return; }
+  const list = [...repo.players].sort((a, b) => b.mmr - a.mmr || byName(a, b));
+  el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r">전적</th><th class="r">승률</th></tr></thead>
+      <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
+        <td class="rank">${i + 1}</td>
+        <td>${esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}</td>
+        <td class="r mmr">${p.mmr}</td>
+        <td class="r num">${p.wins}승 ${p.losses}패</td>
+        <td class="r num">${p.games ? Math.round(p.wins / p.games * 100) + '%' : '–'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts), z = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+function renderHistory() {
+  const el = $('history');
+  if (!repo.matches.length) { el.innerHTML = '<h2>경기 기록</h2><div class="empty">아직 기록된 경기가 없습니다. 팀 짜기에서 승리 팀을 누르면 여기에 쌓입니다.</div>'; return; }
+  const side = (m, ids, cls, label) => `<ul><li><span class="label ${cls}">${label}</span></li>${ids.map(id => {
+    const d = (m.deltas || {})[id] || 0;
+    return `<li><span class="nm">${esc((m.names || {})[id] || '삭제된 선수')}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
+  }).join('')}</ul>`;
+  const undo = state.confirmUndo
+    ? `<div class="confirm"><span>${fmtTime(repo.matches[0].ts)} 경기를 취소하고 MMR을 되돌릴까요?</span><button class="danger small" id="btnUndoYes" ${state.busy ? 'disabled' : ''}>취소 확정</button><button class="small" id="btnUndoNo">아니오</button></div>`
+    : `<button class="small danger" id="btnUndo" ${state.busy ? 'disabled' : ''}>마지막 경기 취소</button>`;
+  el.innerHTML = `<div class="row between"><h2>경기 기록</h2><span class="muted">최근 ${repo.matches.length}경기</span></div>
+    <div>${undo}</div>
+    ${repo.matches.map(m => `<div class="match">
+      <div class="match-head"><span class="num">${fmtTime(m.ts)}</span>
+        <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
+      <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
+    </div>`).join('')}`;
+}
+
+function renderPlayers() {
+  const list = [...repo.players].sort(byName);
+  $('playerCount').textContent = list.length ? `${list.length}명` : '';
+  $('playerList').innerHTML = list.length
+    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${esc(p.name)}</span><span class="num">MMR ${p.mmr} · ${p.games}판</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
+    : '<div class="empty">위에서 이름과 티어를 넣어 첫 선수를 추가하세요.</div>';
+  const map = pmap();
+  if (state.editId && !map[state.editId]) closeEdit();
+  $('btnEditDelete').textContent = state.confirmDelete ? '한 번 더 누르면 삭제' : '삭제';
+  ['btnEditSave', 'btnEditDelete'].forEach(id => { $(id).disabled = state.busy; });
+}
+
+function renderAll() { renderHeader(); renderTeams(); renderRanking(); renderHistory(); renderPlayers(); }
+
+// ---------- 동작
+function route() {
+  const tabs = ['teams', 'ranking', 'history', 'players'];
+  const cur = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'teams';
+  document.querySelectorAll('[data-view]').forEach(s => { s.hidden = s.dataset.view !== cur; });
+  document.querySelectorAll('[data-tab]').forEach(a => { if (a.dataset.tab === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+}
+window.addEventListener('hashchange', route);
+
+function makeSplit() {
+  const map = pmap();
+  const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr }));
+  state.split = pickSplit(players, state.split ? state.split.key : state.lastKey);
+  state.lastKey = state.split.key;
+  renderTeams();
+}
+
+$('chips').addEventListener('click', e => {
+  const b = e.target.closest('[data-pick]'); if (!b) return;
+  const id = b.dataset.pick;
+  if (state.selected.has(id)) state.selected.delete(id);
+  else if (state.selected.size >= 10) { toast('한 판은 최대 10명입니다.'); return; }
+  else state.selected.add(id);
+  state.split = null; saveSel(); renderTeams();
+});
+$('btnClearSel').addEventListener('click', () => { state.selected.clear(); state.split = null; saveSel(); renderTeams(); });
+$('btnSplit').addEventListener('click', makeSplit);
+
+$('result').addEventListener('click', async e => {
+  if (e.target.id === 'btnReroll') return makeSplit();
+  const w = e.target.closest('[data-win]'); if (!w) return;
+  const winner = w.dataset.win, s = state.split, map = pmap();
+  const ids = [...s.blue, ...s.red];
+  if (ids.some(id => !map[id])) { toast('삭제된 선수가 있습니다. 팀을 다시 짜 주세요.'); return; }
+  const { deltas, pBlue } = computeDeltas(s.blue, s.red, winner, map);
+  const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
+  const ok = await run(async () => {
+    const ts = Date.now();
+    await repo.addMatch({ ts, blue: s.blue, red: s.red, names, deltas, winner, pBlue });
+    await Promise.all(ids.map(id => {
+      const p = map[id], won = (s.blue.includes(id) ? 'blue' : 'red') === winner;
+      return repo.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won ? 1 : 0), losses: p.losses + (won ? 0 : 1), ts });
+    }));
+  });
+  if (ok) {
+    const wId = (winner === 'blue' ? s.blue : s.red)[0];
+    state.split = null;
+    toast(`${winner === 'blue' ? '블루' : '레드'} 승리 기록됨 · 승리팀 ${signed(deltas[wId])}`);
+    renderTeams();
+  }
+});
+
+$('history').addEventListener('click', async e => {
+  const id = e.target.id;
+  if (id === 'btnUndo') { state.confirmUndo = true; renderHistory(); }
+  else if (id === 'btnUndoNo') { state.confirmUndo = false; renderHistory(); }
+  else if (id === 'btnUndoYes') {
+    const m = repo.matches[0]; if (!m) return;
+    const map = pmap();
+    const ok = await run(async () => {
+      await Promise.all(Object.entries(m.deltas || {}).map(([pid, d]) => {
+        const p = map[pid]; if (!p) return null;
+        const won = (m.blue.includes(pid) ? 'blue' : 'red') === m.winner;
+        return repo.updatePlayer(pid, { mmr: p.mmr - d, games: Math.max(0, p.games - 1), wins: Math.max(0, p.wins - (won ? 1 : 0)), losses: Math.max(0, p.losses - (won ? 0 : 1)), ts: Date.now() });
+      }));
+      await repo.deleteMatch(m.id);
+    });
+    state.confirmUndo = false; renderHistory();
+    if (ok) toast('마지막 경기를 취소했습니다.');
+  }
+});
+
+function tierOptions(sel) { sel.innerHTML = TIERS.map(([n, m]) => `<option value="${m}" ${m === 1000 ? 'selected' : ''}>${n} · ${m}</option>`).join(''); }
+tierOptions($('addTier')); tierOptions($('bulkTier'));
+const nameTaken = (name, exceptId) => repo.players.some(p => p.id !== exceptId && p.name.toLowerCase() === name.toLowerCase());
+const fresh = (name, mmr) => ({ name, mmr, games: 0, wins: 0, losses: 0, ts: Date.now() });
+
+$('addForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('addName').value.trim().slice(0, 20);
+  if (!name) { toast('이름을 입력하세요.'); return; }
+  if (nameTaken(name)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
+  if (await run(() => repo.addPlayer(fresh(name, +$('addTier').value)))) { $('addName').value = ''; toast(`${name} 추가됨`); }
+});
+$('bulkForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const names = parseNames($('bulkNames').value);
+  const add = names.filter(n => !nameTaken(n)), skip = names.length - add.length;
+  if (!add.length) { toast(names.length ? '모두 이미 등록된 이름입니다.' : '이름을 입력하세요.'); return; }
+  const mmr = +$('bulkTier').value;
+  if (await run(async () => { for (const n of add) await repo.addPlayer(fresh(n, mmr)); })) {
+    $('bulkNames').value = '';
+    toast(`${add.length}명 추가됨${skip ? ` · 중복 ${skip}명 제외` : ''}`);
+  }
+});
+
+function closeEdit() { state.editId = null; state.confirmDelete = false; $('editPanel').hidden = true; }
+$('playerList').addEventListener('click', e => {
+  const b = e.target.closest('[data-edit]'); if (!b) return;
+  const p = pmap()[b.dataset.edit]; if (!p) return;
+  state.editId = p.id; state.confirmDelete = false;
+  $('editName').value = p.name; $('editMmr').value = p.mmr;
+  $('editPanel').hidden = false; renderPlayers();
+  $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
+});
+$('btnEditCancel').addEventListener('click', () => { closeEdit(); renderPlayers(); });
+$('btnEditSave').addEventListener('click', async () => {
+  const id = state.editId, name = $('editName').value.trim().slice(0, 20), mmr = Number($('editMmr').value);
+  if (!name) { toast('이름을 입력하세요.'); return; }
+  if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
+  if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
+  if (await run(() => repo.updatePlayer(id, { name, mmr, ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+});
+$('btnEditDelete').addEventListener('click', async () => {
+  if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
+  const id = state.editId, name = $('editName').value;
+  if (await run(() => repo.deletePlayer(id))) { state.selected.delete(id); saveSel(); closeEdit(); toast(`${name} 삭제됨`); }
+});
+
+repo.onChange(renderAll);
+route(); renderAll();
+repo.init();
+</script>
+
+</body>
+</html>
