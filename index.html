@@ -285,7 +285,9 @@ const POS_SLACK = 30; // 포지션을 맞추려고 허용하는 평균 MMR 차�
 const SERIES_WINS = 2; // 3판 2선
 
 function expected(ra, rb) { return 1 / (1 + Math.pow(10, (rb - ra) / 400)); }
-function kFactor(games) { return games < PLACEMENT_GAMES ? 48 : 32; }
+// 매일 하는 게 아니라 변동을 크게: 배치 64, 이후 48
+const K_PLACEMENT = 64, K_BASE = 48;
+function kFactor(games) { return games < PLACEMENT_GAMES ? K_PLACEMENT : K_BASE; }
 // 연승은 양수, 연패는 음수
 function nextStreak(prev, won) { prev = prev || 0; return won ? (prev > 0 ? prev + 1 : 1) : (prev < 0 ? prev - 1 : -1); }
 function teamAvg(ids, map) { return ids.reduce((s, id) => s + map[id].mmr, 0) / ids.length; }
@@ -683,11 +685,11 @@ function renderTeams() {
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
       return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${off && !s.done ? ' <span class="kda shield" title="용맹의 방패: 선호 밖 포지션으로 배정돼 지면 감점이 절반입니다">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
-    const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
+    const win = Math.round(K_BASE * (1 - e)), lose = Math.round(K_BASE * (0 - e));
     return `<div class="team ${side}">
       <div class="team-head"><span class="side">${side === 'blue' ? 'BLUE' : 'RED'}</span><span class="avg">평균 ${Math.round(avg)}</span></div>
       <ul>${rows}</ul>
-      ${s.done ? '' : `<span class="swing" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</span>`}
+      ${s.done ? '' : `<span class="swing" title="배치 10판 미만 선수는 ×${(K_PLACEMENT / K_BASE).toFixed(2)}">승 ${signed(win)} · 패 ${signed(lose)}</span>`}
     </div>`;
   };
   res.hidden = false;
