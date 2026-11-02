@@ -214,7 +214,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <div class="row">
         <button class="primary" id="btnSplit">팀 짜기</button>
         <button id="btnManual">직접 짜기</button>
-        <button id="btnClearSel">선택 해제</button>
+        <button id="btnClearSel">초기화</button>
       </div>
     </div>
     <div class="panel" id="result" hidden></div>
@@ -609,7 +609,7 @@ const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
   picking: null, pick: new Set(), swapId: null, upload: null,
-  lastKey: null, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
+  lastKey: null, confirmReset: false, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
 };
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
 const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
@@ -661,7 +661,10 @@ function renderTeams() {
   const ok = n >= 2 && n <= 10 && n % 2 === 0;
   $('selCount').innerHTML = `<b class="num">${n}</b>명 선택 · ${ok ? '팀 짜기 가능' : '2~10명, 짝수'}`;
   $('btnSplit').disabled = !ok || state.busy || inSeries();
-  $('btnClearSel').disabled = !n || inSeries();
+  const hasCons = state.cons.same.length + state.cons.diff.length > 0;
+  $('btnClearSel').disabled = state.busy || !(n || hasCons || repo.series);
+  $('btnClearSel').textContent = state.confirmReset ? '한 번 더 누르면 초기화' : '초기화';
+  $('btnClearSel').classList.toggle('danger', !!state.confirmReset);
   $('btnManual').disabled = !ok || state.busy || inSeries();
 
   const res = $('result');
@@ -916,9 +919,21 @@ $('chips').addEventListener('click', e => {
   else state.selected.add(id);
   saveSel(); renderTeams();
 });
-$('btnClearSel').addEventListener('click', () => {
-  if (inSeries()) { toast('시리즈 중에는 참가자를 바꿀 수 없습니다. 시리즈 종료 후 바꾸세요.'); return; }
-  state.selected.clear(); saveSel(); renderTeams(); });
+// 초기화: 참가자 선택, 같은 팀/다른 팀 조건, 짜인 팀(진행 중 시리즈)을 지운다. 기록된 경기와 MMR은 그대로
+let resetTimer = null;
+$('btnClearSel').addEventListener('click', async () => {
+  if (!state.confirmReset) {
+    state.confirmReset = true; renderTeams();
+    clearTimeout(resetTimer); resetTimer = setTimeout(() => { state.confirmReset = false; renderTeams(); }, 4000);
+    return;
+  }
+  clearTimeout(resetTimer); state.confirmReset = false;
+  state.selected.clear(); saveSel();
+  state.cons = { same: [], diff: [] }; saveCons();
+  state.picking = null; state.pick = new Set(); state.swapId = null;
+  if (repo.series) await run(() => repo.setSeries(null));
+  renderTeams(); toast('팀 짜기를 초기화했습니다.');
+});
 $('btnSplit').addEventListener('click', makeSplit);
 $('btnManual').addEventListener('click', manualSplit);
 
