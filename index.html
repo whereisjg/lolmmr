@@ -160,6 +160,8 @@ tr.top1 td:last-child { border-radius: 0 8px 8px 0; }
 tr.top1 .tag { background: var(--surface); border: 1px solid var(--gold); }
 .crown { margin-right: 4px; font-size: 17px; line-height: 1; vertical-align: -1px; }
 td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
+[data-tip] { cursor: pointer; }
+.tip-pop { position: fixed; z-index: 30; max-width: min(280px, calc(100vw - 32px)); padding: 9px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-weight: 400; }
 .tag.penta { margin: 0 2px 0 0; }
 .tag.coward { background: var(--red-soft); color: var(--red); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); margin-left: 6px; font-weight: 700; vertical-align: 1px; }
@@ -927,7 +929,7 @@ function renderTeams() {
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = isOffRole(p, r);
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${off && !s.done ? ' <span class="kda shield" title="용맹의 방패: 선호 밖 포지션으로 배정돼 지면 감점이 절반입니다">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" title="세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
@@ -978,7 +980,7 @@ function renderRanking() {
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="3판 2선 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
-        <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" title="주 포지션만 고르고 부 포지션을 고르지 않았습니다">비겁자</span>' : ''}</td>
+        <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}</td>
         <td class="r mmr">${p.mmr}</td>
         <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패</td>
         <td class="r num muted">${p.wins}-${p.losses}</td>
@@ -1044,7 +1046,7 @@ function renderHistory() {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
-    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" title="펜타킬 보너스 포함">펜타</span> ' : ''}${signed(d)}</span></li>`;
+    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
   const delCtl = m => state.confirmDel === m.id
@@ -1636,6 +1638,21 @@ $('btnEditDelete').addEventListener('click', async () => {
   if (await run(() => repo.deletePlayer(id))) { state.selected.delete(id); saveSel(); closeEdit(); toast(`${name} 삭제됨`); }
 });
 
+let tipEl = null;
+function closeTip() { if (tipEl) { tipEl.remove(); tipEl = null; } }
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-tip]');
+  if (!t) { closeTip(); return; }
+  e.stopPropagation(); e.preventDefault();
+  const same = tipEl && tipEl.dataset.for === t.dataset.tip; closeTip(); if (same) return;
+  tipEl = document.createElement('div'); tipEl.className = 'tip-pop'; tipEl.setAttribute('role', 'tooltip'); tipEl.dataset.for = t.dataset.tip; tipEl.textContent = t.dataset.tip;
+  document.body.appendChild(tipEl);
+  const r = t.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+  tipEl.style.left = Math.max(16, Math.min(window.innerWidth - w - 16, r.left + r.width / 2 - w / 2)) + 'px';
+  tipEl.style.top = (r.bottom + 8 + h > window.innerHeight ? r.top - h - 8 : r.bottom + 8) + 'px';
+}, true);
+window.addEventListener('scroll', closeTip, true);
+window.addEventListener('hashchange', closeTip);
 repo.onChange(renderAll);
 let statsBooted = false;
 repo.onChange(() => { if (!statsBooted && repo.mode !== 'loading' && location.hash === '#stats') { statsBooted = true; loadStats(); } });
