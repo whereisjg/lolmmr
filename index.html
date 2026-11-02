@@ -262,7 +262,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다.</li>
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
-        <li>1세트 전에는 선수를 누르고 상대 팀 선수를 누르면 둘이 바뀝니다. 마음에 안 들면 <b>다시 짜기</b>.</li>
+        <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
         <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
       </ol>
 
@@ -888,7 +888,8 @@ function renderTeams() {
   const played = s.score.blue + s.score.red;
   const offCount = [...s.blue, ...s.red].filter(id => (map[id].pos || []).length && !map[id].pos.includes(s.roles[id])).length;
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
-  const canSwap = !played && !s.done;
+  // 같은 팀 포지션 교환은 시리즈 중 언제나, 상대 팀과 선수 교환은 1세트 전에만
+  const canSwap = !s.done;
   if (!canSwap) state.swapId = null;
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
@@ -931,7 +932,7 @@ function renderTeams() {
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
-    <span class="muted">${canSwap ? '선수를 누르고 상대 팀 선수를 누르면 서로 바뀝니다. ' : '시리즈가 끝날 때까지 팀이 유지됩니다. MMR은 세트마다 반영됩니다. '}결과는 한 명만 기록하세요.</span>`}`;
+    <span class="muted">${played ? '같은 팀 선수 둘을 차례로 누르면 포지션이 바뀝니다. 팀은 시리즈가 끝날 때까지 유지되고, MMR은 세트마다 반영됩니다. ' : '선수를 누른 뒤 같은 팀 선수를 누르면 포지션이, 상대 팀 선수를 누르면 팀이 서로 바뀝니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
 function renderRanking() {
@@ -1113,10 +1114,17 @@ function manualSplit() {
 function swapPick(id) {
   const s = repo.series; if (!s) return;
   const a = state.swapId;
-  if (!a || a === id || s.blue.includes(a) === s.blue.includes(id)) { state.swapId = a === id ? null : id; renderTeams(); return; }
+  if (!a || a === id) { state.swapId = a === id ? null : id; renderTeams(); return; }
+  state.swapId = null;
+  if (s.blue.includes(a) === s.blue.includes(id)) {
+    // 같은 팀: 둘의 포지션만 맞바꾼다
+    const roles = { ...s.roles, [a]: s.roles[id], [id]: s.roles[a] };
+    run(() => repo.setSeries({ ...s, roles }));
+    return;
+  }
+  if (s.score.blue + s.score.red > 0) { toast('1세트를 기록한 뒤에는 상대 팀과 선수를 바꿀 수 없습니다.'); renderTeams(); return; }
   const sw = x => (x === a ? id : x === id ? a : x);
   const blue = s.blue.map(sw), red = s.red.map(sw);
-  state.swapId = null;
   run(() => repo.setSeries({ ...s, blue, red, roles: rolesFor(blue, red, pmap()), key: '' }));
 }
 const inSeries = () => repo.series && !repo.series.done && repo.series.score.blue + repo.series.score.red > 0;
