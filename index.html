@@ -160,6 +160,7 @@ tr.top1 td:last-child { border-radius: 0 8px 8px 0; }
 tr.top1 .tag { background: var(--surface); border: 1px solid var(--gold); }
 .crown { margin-right: 4px; font-size: 17px; line-height: 1; vertical-align: -1px; }
 td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
+.tag.penta { margin: 0 2px 0 0; }
 .tag.coward { background: var(--red-soft); color: var(--red); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); margin-left: 6px; font-weight: 700; vertical-align: 1px; }
 
@@ -613,6 +614,18 @@ function byGameId(a, b) {
   const x = BigInt(a.gameId), y = BigInt(b.gameId);
   return x < y ? -1 : x > y ? 1 : 0;
 }
+// 이스터에그: 펜타킬 1번당 MMR +5
+const PENTA_BONUS = 5;
+function pentaOf(st) {
+  const e = ((st && st.extra) || []).find(x => x.key === '펜타킬');
+  return e ? Math.max(0, parseInt(e.value, 10) || 0) : 0;
+}
+// 경기 m에 아직 안 준 펜타 보너스: { pid: 추가 점수 }. 같은 경기를 여러 번 올려도 한 번만
+function pentaGains(m, pairs) {
+  const had = (m && m.pentaBonus) || {}, gains = {};
+  for (const [pid, st] of pairs) { const want = PENTA_BONUS * pentaOf(st); if (want > (had[pid] || 0)) gains[pid] = want - (had[pid] || 0); }
+  return gains;
+}
 const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
@@ -1031,7 +1044,7 @@ function renderHistory() {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
-    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${signed(d)}</span></li>`;
+    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" title="펜타킬 보너스 포함">펜타</span> ' : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
   const delCtl = m => state.confirmDel === m.id
@@ -1334,6 +1347,19 @@ const waitFor = (fn, ms = 8000) => new Promise((res, rej) => {
   const tick = () => { let ok = false; try { ok = fn(); } catch (e) {} if (ok) res(); else if (Date.now() - t0 > ms) rej({ code: 'slow' }); else setTimeout(tick, 100); };
   tick();
 });
+function pentaToast(gains) {
+  const map = pmap(), list = Object.entries(gains).map(([pid, g]) => `${(map[pid] || {}).name || '?'} +${g}`);
+  if (list.length) setTimeout(() => toast(`펜타킬! ${list.join(', ')}`), 3400);
+}
+// 이미 기록된 경기에 통계를 붙이다 펜타킬이 확인되면 보너스를 준다. deltas에 더해 두어 삭제·복원 때 같이 움직인다
+async function awardPenta(m, pairs) {
+  const gains = pentaGains(m, pairs); if (!Object.keys(gains).length) return;
+  const deltas = { ...(m.deltas || {}) }, bonus = { ...(m.pentaBonus || {}) };
+  for (const [pid, g] of Object.entries(gains)) { deltas[pid] = (deltas[pid] || 0) + g; bonus[pid] = (bonus[pid] || 0) + g; }
+  await repo.updateMatch(m.id, { deltas, pentaBonus: bonus });
+  for (const [pid, g] of Object.entries(gains)) { const p = pmap()[pid]; if (p) await repo.updatePlayer(pid, { mmr: p.mmr + g }); }
+  pentaToast(gains);
+}
 async function learnRiotNames(pairs) {
   for (const [pid, st] of pairs) {
     const p = pmap()[pid], rn = (p && p.riotNames) || [];
@@ -1414,6 +1440,7 @@ async function attachReplayPlan() {
       if (!m || !it.mapped) continue;
       const pairs = Object.entries(it.rowMap).map(([i, pid]) => [pid, it.parsed.players[i]]);
       await repo.updateMatch(m.id, statsPatch(m, pairs, { ...it.parsed, gameId: it.gameId }));
+      await awardPenta(m, pairs);
       await learnRiotNames(pairs);
       n++;
     }
@@ -1435,7 +1462,10 @@ async function recordReplayPlan() {
       const played = s.score.blue + s.score.red, g0 = map[ids[0]].games;
       const pairs = Object.entries(it.rowMap).map(([i, pid]) => [pid, it.parsed.players[i]]);
       // 7. 승패와 통계·경기 번호를 같은 경기 문서에 한 번에 쓴다
-      await repo.recordGame(s, it.winner, deltas, pBlue, names, map, statsPatch({}, pairs, { ...it.parsed, gameId: it.gameId }));
+      const penta = pentaGains(null, pairs);
+      for (const [pid, g] of Object.entries(penta)) deltas[pid] = (deltas[pid] || 0) + g;
+      await repo.recordGame(s, it.winner, deltas, pBlue, names, map, { ...statsPatch({}, pairs, { ...it.parsed, gameId: it.gameId }), ...(Object.keys(penta).length ? { pentaBonus: penta } : {}) });
+      pentaToast(penta);
       await learnRiotNames(pairs);
       done++;
       // 다음 세트 MMR 계산용 공유 저장 반영을 기다린다. 늦으면 멈춘다(1)
@@ -1503,6 +1533,7 @@ $('history').addEventListener('click', async e => {
     const pairs = Object.entries(stats);
     const ok = await run(async () => {
       await repo.updateMatch(m.id, statsPatch(m, pairs, u.parsed));
+      await awardPenta(m, pairs);
       await learnRiotNames(pairs);
     });
     if (ok) { state.upload = null; toast(`${Object.keys(stats).length}명의 결과를 저장했습니다.`); renderHistory(); }
