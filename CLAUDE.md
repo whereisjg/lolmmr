@@ -38,7 +38,7 @@
 - 챔피언(`SKIN`)·아이템 ID는 Data Dragon ko_KR(`lolNames`, `localStorage` `mmr-ddragon` 하루 캐시)로 한국어 이름 변환. 실패 시 원문
 - 이름은 `RIOT_ID_GAME_NAME#RIOT_ID_TAG_LINE`, CS는 미니언+정글, 딜량은 `TOTAL_DAMAGE_DEALT_TO_CHAMPIONS`, `extra`에 받은 피해·시야·와드·멀티킬 등. 팀 100=blue, 200=red(게임 내 진영)
 - 이후 선수 연결·저장·합치기는 결과창 업로드와 같음
-- 팀 짜기의 `리플레이로 기록 (여러 개 선택)`: 진행 중 시리즈에 리플레이 여러 개를 한 번에. 파일 이름의 경기 번호(`replayGameId`, 클수록 나중)로 세트 순서를 정하고, `autoMap`으로 연결된 선수의 게임 내 진영 다수결(`replayWinner`)로 시리즈 기준 승리 팀을 판정 → 미리보기 → `recordGame` + `updateMatch(stats)` 순서대로. 시리즈가 끝나면 남은 파일은 버림. `statsMeta.gameId`로 이미 기록된 리플레이는 제외. 닉네임 연결이 0명이면 기록 불가
+- 팀 짜기의 `리플레이로 기록`(다시 짜기/시리즈 종료 오른쪽, 블루·레드 승리 버튼은 그 아래 줄): 진행 중 시리즈에 리플레이 여러 개를 한 번에. 파일 이름의 경기 번호(`replayGameId`, 클수록 나중)로 세트 순서를 정하고, `autoMap`으로 연결된 선수의 게임 내 진영 다수결(`replayWinner`)로 시리즈 기준 승리 팀을 판정 → 미리보기 → `recordGame` + `updateMatch(stats)` 순서대로. 시리즈가 끝나면 남은 파일은 버림. `statsMeta.gameId`로 이미 기록된 리플레이는 제외. 닉네임 연결이 0명이면 기록 불가
 
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600

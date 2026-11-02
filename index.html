@@ -896,12 +896,15 @@ function renderTeams() {
       <button class="primary" id="btnAgain" ${dis}>같은 팀으로 한 번 더</button>
       <button id="btnClose" ${dis}>결과 닫기</button>
     </div>
-    <span class="muted">새로 짜려면 위에서 참가자를 고르고 팀 짜기를 누르세요.</span>` : `<div class="actions">
+    <span class="muted">새로 짜려면 위에서 참가자를 고르고 팀 짜기를 누르세요.</span>` : `<div class="actions two">
       ${played ? `<button id="btnEndSeries" ${dis}>시리즈 종료</button>` : `<button id="btnReroll" ${dis}>다시 짜기</button>`}
+      <button id="btnReplaySeries" ${dis} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일 여러 개">리플레이로 기록</button>
+    </div>
+    ${replayPlanHtml(s)}
+    <div class="actions two">
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
-    ${replayPlanHtml(s)}
     <span class="muted">${canSwap ? '선수를 누르고 상대 팀 선수를 누르면 서로 바뀝니다. ' : '시리즈가 끝날 때까지 팀이 유지됩니다. MMR은 세트마다 반영됩니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
@@ -1238,7 +1241,7 @@ async function lolNames() {
 // ---- 리플레이 여러 개로 시리즈 기록: 경기 번호순으로 세트를 정하고 승패·통계를 한 번에 반영
 function replayPlanHtml(s) {
   const plan = state.replayPlan, dis = state.busy ? 'disabled' : '';
-  if (!plan) return `<div class="row"><button class="small" id="btnReplaySeries" ${dis} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일">리플레이로 기록 (여러 개 선택)</button></div>`;
+  if (!plan) return '';
   if (plan.loading) return '<div class="shot">리플레이를 읽는 중입니다.</div>';
   if (plan.err) return `<div class="shot"><span class="down">${esc(plan.err)}</span><div class="row"><button class="small" id="btnReplayCancel">닫기</button></div></div>`;
   const played = s.score.blue + s.score.red;
