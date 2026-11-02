@@ -575,6 +575,26 @@ function replayWinner(parsed, rowMap, series) {
   mixed = Math.min(vote.blue, vote.red);
   return { winner: parsed.winner === blueSide ? 'blue' : 'red', mapped, mixed };
 }
+// 경기 m에 통계를 합친 패치. pairs: [[선수id, stat]], src: {duration, winner, teams, notes, gameId}
+// 빈 값은 기존 값을 유지한다(리플레이는 teams가 비어 있어 결과창의 팀 합계를 지우지 않게)
+function statsPatch(m, pairs, src) {
+  const merged = { ...(m.stats || {}) };
+  for (const [pid, st] of pairs) merged[pid] = mergeStat(merged[pid], st);
+  const old = m.statsMeta || {};
+  const pick = (v, o) => (v && (!Array.isArray(v) || v.length) ? v : o);
+  return { stats: merged, statsMeta: {
+    duration: pick(src.duration, old.duration || ''),
+    winner: src.winner && src.winner !== 'unknown' ? src.winner : (old.winner || 'unknown'),
+    teams: pick(src.teams, old.teams || []), notes: pick(src.notes, old.notes || ''),
+    gameId: src.gameId || old.gameId || '', shots: (old.shots || (m.stats ? 1 : 0)) + 1, ts: Date.now()
+  } };
+}
+// 리플레이 정렬: 경기 번호 오름차순, 번호 없는 파일(이름 바꿈)은 뒤로, 같은 번호는 원래 순서 유지
+function byGameId(a, b) {
+  if (!a.gameId || !b.gameId) return (a.gameId ? 0 : 1) - (b.gameId ? 0 : 1);
+  const x = BigInt(a.gameId), y = BigInt(b.gameId);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
 const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
@@ -673,14 +693,15 @@ const repo = {
     this.local.series = x; this.saveLocal();
   },
   // 세트 기록. Firebase는 transaction + increment로 중복 기록과 덮어쓰기를 막는다
-  async recordGame(s, winner, deltas, pBlue, names, map) {
+  // extra: 같은 경기 문서에 함께 쓸 필드(리플레이 통계 등). 한 번에 써서 gameId가 빠진 경기가 생기지 않게 한다
+  async recordGame(s, winner, deltas, pBlue, names, map, extra = {}) {
     const played = s.score.blue + s.score.red, game = played + 1, ts = Date.now();
     const ids = [...s.blue, ...s.red], won = id => (s.blue.includes(id) ? 'blue' : 'red') === winner;
     const score = { ...s.score, [winner]: s.score[winner] + 1 };
     const finished = score[winner] >= SERIES_WINS;
     const next = { ...s, score, done: finished, winner: finished ? winner : null }; // 끝나도 결과를 화면에 남긴다
     const mid = s.sid + '-g' + game;
-    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game };
+    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game, ...extra };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + mid);
       await this.db.runTransaction(async t => {
@@ -813,6 +834,8 @@ function toast(msg) {
 }
 function errMsg(e) {
   const c = e && e.code;
+  if (c === 'slow') return '저장 반영이 늦어 멈췄습니다. 화면을 확인한 뒤 남은 리플레이를 다시 올려 주세요.';
+  if (c === 'missing') return '삭제된 선수가 있어 기록할 수 없습니다.';
   if (c === 'stale') return '다른 사람이 먼저 기록했습니다. 화면이 최신 상태로 바뀌었습니다.';
   if (c === 'permission-denied') return 'Firebase 보안 규칙이 쓰기를 막고 있습니다.';
   if (c === 'invalid_argument') return '저장 권한이 없거나 요청이 잘못되었습니다.';
@@ -1245,27 +1268,43 @@ async function lolNames() {
 function replayPlanHtml(s) {
   const plan = state.replayPlan, dis = state.busy ? 'disabled' : '';
   if (!plan) return '';
+  if (plan.sid !== s.sid || plan.done !== !!s.done) { state.replayPlan = null; return ''; }
   if (plan.loading) return '<div class="shot">리플레이를 읽는 중입니다.</div>';
   if (plan.err) return `<div class="shot"><span class="down">${esc(plan.err)}</span><div class="row"><button class="small" id="btnReplayCancel">닫기</button></div></div>`;
   const attach = plan.mode === 'attach', played = attach ? 0 : s.score.blue + s.score.red;
-  const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${attach ? (it.target ? `${it.target.game}세트` : '<span class="down">붙일 세트 없음</span>') : `${played + k + 1}세트`} · ${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'}${attach && it.target && it.winner && it.winner !== it.target.winner ? ' · <span class="down">기록과 다름</span>' : ''} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span></div>`).join('');
-  const bad = attach ? !plan.items.some(it => it.target && it.mapped) : plan.items.some(it => !it.winner);
+  const tgt = it => attach && plan.games.find(g => g.id === it.targetId);
+  const pickSet = (it, k) => `<select data-target="${k}" aria-label="붙일 세트"><option value="">붙이지 않음</option>${plan.games.map(g => `<option value="${esc(g.id)}" ${g.id === it.targetId ? 'selected' : ''}>${g.game}세트 (${g.winner === 'blue' ? '블루' : '레드'} 승)</option>`).join('')}</select>`;
+  const dupTarget = attach && new Set(plan.items.map(it => it.targetId).filter(Boolean)).size < plan.items.filter(it => it.targetId).length;
+  const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${attach ? '' : `${played + k + 1}세트 · `}${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'}${tgt(it) && it.winner && it.winner !== tgt(it).winner ? ' · <span class="down">기록과 다름</span>' : ''} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span>${attach ? pickSet(it, k) : ''}</div>`).join('');
+  const bad = attach ? (dupTarget || !plan.items.some(it => it.targetId && it.mapped)) : plan.items.some(it => !it.winner);
   return `<div class="shot">
-    <span class="muted">${attach ? '경기 번호순으로 이 시리즈의 세트에 통계만 붙입니다. 승패와 MMR은 바뀌지 않습니다.' : '경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.'}${plan.skipped ? ` 이미 기록된 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}</span>
+    <span class="muted">${attach ? '이 시리즈의 세트에 통계만 붙입니다. 승패와 MMR은 바뀌지 않습니다. 경기 번호순으로 세트를 골라 두었으니, 빠진 리플레이가 있으면 오른쪽에서 세트를 고쳐 주세요.' : '경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.'}${plan.skipped ? ` 이미 기록됐거나 같은 경기인 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}${plan.renamed ? ` <span class="down">이름이 바뀐 파일 ${plan.renamed}개는 순서를 알 수 없어 맨 뒤에 두었습니다.</span>` : ''}</span>
     ${rows}
-    ${bad ? `<span class="down">${attach ? '붙일 수 있는 리플레이가 없습니다. 닉네임 연결이나 세트 수를 확인해 주세요.' : '닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.'}</span>` : ''}
+    ${bad ? `<span class="down">${attach ? (dupTarget ? '두 리플레이가 같은 세트를 가리키고 있습니다. 세트를 다시 골라 주세요.' : '붙일 수 있는 리플레이가 없습니다. 닉네임 연결이나 세트 선택을 확인해 주세요.') : '닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.'}</span>` : ''}
     <div class="row"><button class="small primary" id="btnReplayRecord" ${bad || !plan.items.length ? 'disabled' : dis}>${attach ? '통계 추가' : '기록하기'}</button><button class="small" id="btnReplayCancel">취소</button></div>
   </div>`;
 }
-const waitFor = (fn, ms = 6000) => new Promise(res => { const t0 = Date.now(); const tick = () => (fn() || Date.now() - t0 > ms ? res() : setTimeout(tick, 100)); tick(); });
+// 1. 조건이 될 때까지 기다리고, 시간이 넘으면 오류로 멈춘다(오래된 값으로 다음 세트를 쓰지 않게)
+const waitFor = (fn, ms = 8000) => new Promise((res, rej) => {
+  const t0 = Date.now();
+  const tick = () => { let ok = false; try { ok = fn(); } catch (e) {} if (ok) res(); else if (Date.now() - t0 > ms) rej({ code: 'slow' }); else setTimeout(tick, 100); };
+  tick();
+});
+async function learnRiotNames(pairs) {
+  for (const [pid, st] of pairs) {
+    const p = pmap()[pid], rn = (p && p.riotNames) || [];
+    if (p && st.name && !rn.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...rn, st.name] });
+  }
+}
 $('replaySeriesInput').addEventListener('change', async e => {
   const files = [...e.target.files]; e.target.value = '';
   const s = repo.series; if (!files.length || !s) return;
-  state.replayPlan = { loading: true }; renderTeams();
+  state.replayPlan = { loading: true, sid: s.sid, done: !!s.done }; renderTeams();
   try {
     const names = await lolNames(), map = pmap();
     const fake = { blue: s.blue, red: s.red, names: Object.fromEntries([...s.blue, ...s.red].map(id => [id, map[id].name])) };
-    const known = new Set((await repo.allMatches()).map(m => m.statsMeta && m.statsMeta.gameId).filter(Boolean));
+    const all = await repo.allMatches(); // 9. 한 번만 읽는다
+    const known = new Set(all.map(m => m.statsMeta && m.statsMeta.gameId).filter(Boolean));
     let items = [];
     for (const f of files) {
       const tail = await f.slice(Math.max(0, f.size - 2 * 1024 * 1024)).arrayBuffer();
@@ -1273,65 +1312,68 @@ $('replaySeriesInput').addEventListener('change', async e => {
       const rowMap = autoMap(fake, parsed.players);
       items.push({ name: f.name, gameId: replayGameId(f.name), parsed, rowMap, ...replayWinner(parsed, rowMap, s) });
     }
-    const before = items.length;
-    items = items.filter(it => !it.gameId || !known.has(it.gameId));
-    items.sort((a, b) => (a.gameId && b.gameId ? (BigInt(a.gameId) < BigInt(b.gameId) ? -1 : 1) : 0));
+    const before = items.length, seen = new Set();
+    // 2. 이미 기록된 경기 번호와, 이번 선택 안에서 같은 번호(같은 리플레이를 두 번 받은 파일)는 뺀다
+    items = items.filter(it => { if (!it.gameId) return true; if (known.has(it.gameId) || seen.has(it.gameId)) return false; seen.add(it.gameId); return true; });
+    items.sort(byGameId); // 6
+    const plan = { sid: s.sid, done: !!s.done, items, skipped: before - items.length, renamed: items.filter(it => !it.gameId).length };
     if (s.done) {
-      // 끝난 시리즈: 이 시리즈의 세트(통계가 아직 리플레이로 안 붙은 것) 순서대로 붙인다
-      const games = (await repo.allMatches()).filter(m => m.series === s.sid && !(m.statsMeta && m.statsMeta.gameId)).sort((a, b) => a.game - b.game);
-      items.forEach((it, k) => { it.target = games[k] || null; });
-      state.replayPlan = { mode: 'attach', items, skipped: before - items.length };
-    } else state.replayPlan = { items, skipped: before - items.length };
+      // 5. 끝난 시리즈: 아직 리플레이 통계가 없는 세트에 기본은 순서대로 배정하고, 미리보기에서 세트를 바꿀 수 있다
+      plan.mode = 'attach';
+      plan.games = all.filter(m => m.series === s.sid && !(m.statsMeta && m.statsMeta.gameId)).sort((a, b) => a.game - b.game);
+      items.forEach((it, k) => { it.targetId = plan.games[k] ? plan.games[k].id : ''; });
+    }
+    state.replayPlan = plan;
   } catch (err) {
-    state.replayPlan = { err: err.message || '리플레이를 읽지 못했습니다.' };
+    state.replayPlan = { err: err.message || '리플레이를 읽지 못했습니다.', sid: s.sid, done: !!s.done };
   }
   renderTeams();
 });
+$('result').addEventListener('change', e => {
+  const sel = e.target.closest('[data-target]'); const plan = state.replayPlan;
+  if (!sel || !plan || !plan.items) return;
+  plan.items[+sel.dataset.target].targetId = sel.value; renderTeams();
+});
 async function attachReplayPlan() {
   const plan = state.replayPlan; let n = 0;
-  await run(async () => {
+  const ok = await run(async () => {
     for (const it of plan.items) {
-      if (!it.target || !it.mapped) continue;
-      const m = it.target, merged = { ...(m.stats || {}) };
-      for (const [i, pid] of Object.entries(it.rowMap)) merged[pid] = mergeStat(merged[pid], it.parsed.players[i]);
-      const { duration, winner: side, teams, notes } = it.parsed;
-      await repo.updateMatch(m.id, { stats: merged, statsMeta: { ...(m.statsMeta || {}), duration, winner: side, teams, notes, gameId: it.gameId || '', ts: Date.now() } });
-      for (const [i, pid] of Object.entries(it.rowMap)) {
-        const p = pmap()[pid], rn = (p && p.riotNames) || [], nm = it.parsed.players[i].name;
-        if (p && nm && !rn.includes(nm)) await repo.updatePlayer(pid, { riotNames: [...rn, nm] });
-      }
+      const m = plan.games.find(g => g.id === it.targetId);
+      if (!m || !it.mapped) continue;
+      const pairs = Object.entries(it.rowMap).map(([i, pid]) => [pid, it.parsed.players[i]]);
+      await repo.updateMatch(m.id, statsPatch(m, pairs, { ...it.parsed, gameId: it.gameId }));
+      await learnRiotNames(pairs);
       n++;
     }
   });
   state.replayPlan = null; renderAll();
-  if (n) toast(`${n}세트에 리플레이 통계를 붙였습니다.`);
+  if (ok) toast(`${n}세트에 리플레이 통계를 붙였습니다.`);
+  else if (n) toast(`${n}세트만 붙이고 멈췄습니다. 나머지는 다시 올려 주세요.`);
 }
 async function recordReplayPlan() {
   const plan = state.replayPlan; let done = 0;
   if (plan.mode === 'attach') return attachReplayPlan();
   const ok = await run(async () => {
     for (const it of plan.items) {
-      const s = repo.series; if (!s || s.done) break;
+      const s = repo.series; if (!s || s.done || s.sid !== plan.sid) break;
       const map = pmap(), ids = [...s.blue, ...s.red];
+      if (ids.some(id => !map[id])) throw { code: 'missing' };
       const { deltas, pBlue } = computeDeltas(s.blue, s.red, it.winner, map, s.roles);
       const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
       const played = s.score.blue + s.score.red, g0 = map[ids[0]].games;
-      await repo.recordGame(s, it.winner, deltas, pBlue, names, map);
-      // 공유 저장 반영(다음 세트 MMR 계산용)을 기다린다
-      await waitFor(() => repo.series && repo.series.score.blue + repo.series.score.red > played && pmap()[ids[0]].games > g0);
-      const stats = {};
-      for (const [i, pid] of Object.entries(it.rowMap)) stats[pid] = it.parsed.players[i];
-      const { duration, winner: side, teams, notes } = it.parsed;
-      await repo.updateMatch(s.sid + '-g' + (played + 1), { stats, statsMeta: { duration, winner: side, teams, notes, gameId: it.gameId || '', shots: 1, ts: Date.now() } });
-      for (const [pid, st] of Object.entries(stats)) {
-        const p = pmap()[pid], rn = (p && p.riotNames) || [];
-        if (p && st.name && !rn.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...rn, st.name] });
-      }
+      const pairs = Object.entries(it.rowMap).map(([i, pid]) => [pid, it.parsed.players[i]]);
+      // 7. 승패와 통계·경기 번호를 같은 경기 문서에 한 번에 쓴다
+      await repo.recordGame(s, it.winner, deltas, pBlue, names, map, statsPatch({}, pairs, { ...it.parsed, gameId: it.gameId }));
+      await learnRiotNames(pairs);
       done++;
+      // 다음 세트 MMR 계산용 공유 저장 반영을 기다린다. 늦으면 멈춘다(1)
+      await waitFor(() => repo.series && repo.series.score.blue + repo.series.score.red > played && pmap()[ids[0]].games > g0);
     }
   });
   state.replayPlan = null; renderAll();
-  if (ok || done) toast(`리플레이 ${done}개로 ${done}세트를 기록했습니다.`);
+  // 8. 중간에 멈췄으면 성공 메시지로 덮지 않는다
+  if (ok) toast(`리플레이 ${done}개로 ${done}세트를 기록했습니다.`);
+  else if (done) setTimeout(() => toast(`${done}세트만 기록하고 멈췄습니다. 나머지 리플레이를 다시 올려 주세요.`), 3300);
 }
 $('replayInput').addEventListener('change', async e => {
   const file = e.target.files[0]; e.target.value = '';
@@ -1382,21 +1424,14 @@ $('history').addEventListener('click', async e => {
   if (e.target.id === 'btnShotCancel') { state.upload = null; renderHistory(); return; }
   if (e.target.id === 'btnShotSave') {
     const u = state.upload, m = repo.matches.find(x => x.id === u.mid); if (!m) return;
-    const stats = {}, pm = pmap();
+    const stats = {};
     Object.entries(u.map).forEach(([i, pid]) => { stats[pid] = u.parsed.players[i]; });
     if (!Object.keys(stats).length) { toast('연결된 선수가 없습니다.'); return; }
     // 기존 결과창과 합치기 (연결 안 된 선수의 기존 값도 유지)
-    const merged = { ...(m.stats || {}) };
-    for (const [pid, st] of Object.entries(stats)) merged[pid] = mergeStat(merged[pid], st);
-    const old = m.statsMeta || {};
-    const duration = u.parsed.duration || old.duration || '', winner = u.parsed.winner && u.parsed.winner !== 'unknown' ? u.parsed.winner : (old.winner || 'unknown');
-    const teams = (u.parsed.teams || []).length ? u.parsed.teams : (old.teams || []), notes = u.parsed.notes || old.notes || '';
+    const pairs = Object.entries(stats);
     const ok = await run(async () => {
-      await repo.updateMatch(m.id, { stats: merged, statsMeta: { duration, winner, teams, notes, gameId: u.parsed.gameId || old.gameId || '', shots: (old.shots || (m.stats ? 1 : 0)) + 1, ts: Date.now() } });
-      for (const [pid, st] of Object.entries(stats)) {
-        const p = pm[pid], names = (p && p.riotNames) || [];
-        if (p && st.name && !names.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...names, st.name] });
-      }
+      await repo.updateMatch(m.id, statsPatch(m, pairs, u.parsed));
+      await learnRiotNames(pairs);
     });
     if (ok) { state.upload = null; toast(`${Object.keys(stats).length}명의 결과를 저장했습니다.`); renderHistory(); }
     return;
