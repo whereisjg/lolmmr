@@ -147,18 +147,21 @@ td.rank { font-family: var(--font-num); font-weight: 700; color: var(--muted); w
 tr.top1 td { background: transparent; font-weight: 700; }
 tr.top1 { background: linear-gradient(105deg, var(--gold-soft) 35%, var(--gold-shine) 50%, var(--gold-soft) 65%) 0 0 / 300% 100%; animation: royal-sweep 3.2s ease-in-out infinite; }
 @keyframes royal-sweep { 0% { background-position: 100% 0; } 60%, 100% { background-position: 0 0; } }
-tr.top1 .royal, .royal-card .royal { background: linear-gradient(90deg, var(--gold) 0%, var(--gold) 40%, var(--gold-glint) 50%, var(--gold) 60%, var(--gold) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: royal-text 2.4s linear infinite; }
+.royal { background: linear-gradient(90deg, var(--gold) 0%, var(--gold) 40%, var(--gold-glint) 50%, var(--gold) 60%, var(--gold) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: royal-text 2.4s linear infinite; }
 @keyframes royal-text { from { background-position: 100% 0; } to { background-position: 0 0; } }
-tr.top1 .crown, .royal-card .crown { display: inline-block; animation: royal-crown 2.4s ease-in-out infinite; }
+.crown { display: inline-block; animation: royal-crown 2.4s ease-in-out infinite; }
 @keyframes royal-crown { 0%, 100% { transform: translateY(0); text-shadow: 0 0 0 transparent; } 50% { transform: translateY(-2px); text-shadow: 0 0 8px var(--gold-glint); } }
-@media (prefers-reduced-motion: reduce) { tr.top1, tr.top1 .royal, tr.top1 .crown, .royal-card, .royal-card .royal, .royal-card .crown { animation: none; } tr.top1, .royal-card { background: var(--gold-soft); } }
+@media (prefers-reduced-motion: reduce) { tr.top1, .royal, .crown, .royal-card, .chip.royal-chip { animation: none; } tr.top1, .royal-card { background: var(--gold-soft); } }
 tr.top1 td, tr.top1 td *, .royal-card, .royal-card * { color: var(--gold) !important; }
 .royal-card { border-color: var(--gold); font-weight: 700; background: linear-gradient(105deg, var(--gold-soft) 35%, var(--gold-shine) 50%, var(--gold-soft) 65%) 0 0 / 300% 100%; animation: royal-sweep 3.2s ease-in-out infinite; }
+.chip.royal-chip { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.chip.royal-chip .num { color: var(--gold) !important; opacity: 1; }
+.team li .royal-name, .match .royal-name, .plist .royal-name { font-weight: 700; }
 .royal-card .champ { background: var(--surface); border-color: var(--gold); }
 tr.top1 td:first-child { border-radius: 8px 0 0 8px; }
 tr.top1 td:last-child { border-radius: 0 8px 8px 0; }
 tr.top1 .tag { background: var(--surface); border: 1px solid var(--gold); }
-.crown { margin-right: 4px; font-size: 17px; line-height: 1; vertical-align: -1px; }
+.crown { color: var(--gold); margin-right: 4px; font-size: 17px; line-height: 1; vertical-align: -1px; }
 td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 [data-tip] { cursor: pointer; }
 .tip-pop { position: fixed; z-index: 30; max-width: min(280px, calc(100vw - 32px)); padding: 9px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-weight: 400; }
@@ -862,6 +865,12 @@ const state = {
   picking: null, pick: new Set(), swapId: null, upload: null, replayPlan: null,
   lastKey: null, confirmReset: false, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
 };
+// 순위 1위(한 세트 이상 뛴 선수 중 MMR 최고, 같으면 가나다순). 모든 화면에서 황금 표시
+function kingId() {
+  const k = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => b.mmr - a.mmr || byName(a, b))[0];
+  return k ? k.id : null;
+}
+const royalName = (id, name) => (id && id === kingId() ? `<span class="royal-name"><span class="crown" aria-label="1위">♛</span><span class="royal">${esc(name)}</span></span>` : esc(name));
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
 const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
 function saveSel() { lsSet('mmr-sel', JSON.stringify([...state.selected])); }
@@ -908,7 +917,7 @@ function renderTeams() {
       : '<div class="empty" style="width:100%"><span>아직 등록된 선수가 없습니다.</span><a href="#players">선수 탭에서 이름을 추가하세요</a></div>';
   } else {
     chips.innerHTML = [...repo.players].sort(byName).map(p =>
-      `<button class="chip${state.pick.has(p.id) ? ' marked' : ''}" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}">${esc(p.name)}<span class="num">${p.mmr}</span></button>`).join('');
+      `<button class="chip${state.pick.has(p.id) ? ' marked' : ''}${p.id === kingId() ? ' royal-chip' : ''}" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}">${royalName(p.id, p.name)}<span class="num">${p.mmr}</span></button>`).join('');
   }
   renderCons(map);
   const ok = n >= 2 && n <= 10 && n % 2 === 0;
@@ -935,7 +944,7 @@ function renderTeams() {
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = isOffRole(p, r);
       const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${esc(p.name)}${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
+      return `<li${tag}><span class="nm"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span>${royalName(id, p.name)}${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span><span class="num">${p.mmr}</span></li>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="team ${side}">
@@ -1052,7 +1061,7 @@ function renderHistory() {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
-    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${esc((m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
+    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
   const delCtl = m => state.confirmDel === m.id
@@ -1072,7 +1081,7 @@ function renderPlayers() {
   const list = [...repo.players].sort(byName);
   $('playerCount').textContent = list.length ? `${list.length}명` : '';
   $('playerList').innerHTML = list.length
-    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${esc(p.name)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판${(p.riotNames || []).length ? '' : ' · <span class="muted" title="결과창 자동 연결용 롤 닉네임이 없습니다">닉네임 없음</span>'}</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
+    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${royalName(p.id, p.name)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판${(p.riotNames || []).length ? '' : ' · <span class="muted" title="결과창 자동 연결용 롤 닉네임이 없습니다">닉네임 없음</span>'}</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
     : '<div class="empty">위에서 이름과 티어를 넣어 첫 선수를 추가하세요.</div>';
   const map = pmap();
   if (state.editId && !map[state.editId]) closeEdit();
