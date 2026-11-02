@@ -62,7 +62,7 @@ h2 { font-size: 16px; margin: 0; text-wrap: balance; }
 .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); white-space: nowrap; }
 .pill.shared { color: var(--good); border-color: currentColor; }
 .pill.off { color: var(--bad); border-color: currentColor; }
-.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; }
+.tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px; }
 .tabs a { text-align: center; padding: 8px 4px; border-radius: 7px; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; }
 .tabs a[aria-current="page"] { background: var(--ink); color: var(--on-ink); }
 .tabs a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
@@ -165,6 +165,13 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .trash summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 .trash[open] { display: flex; flex-direction: column; gap: 8px; }
 .trash-item { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.stat-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface-2); min-width: 0; font-size: 14px; }
+.stat-line { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.stat-line .label { min-width: 3.2em; }
+.kda-r { margin-left: auto; color: var(--gold); font-weight: 700; }
+.champs { display: flex; flex-wrap: wrap; gap: 6px; }
+.champ { font-size: 13px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; background: var(--red-soft); border: 1px solid var(--bad); font-size: 14px; }
 
 /* 선수 */
@@ -185,7 +192,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--on-ink); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgba(0,0,0,.2); z-index: 20; }
 @media (max-width: 380px) {
   .match .cols { grid-template-columns: 1fr; }
-  .tabs a { font-size: 13px; }
+  .tabs a { font-size: 12px; padding: 8px 2px; }
 }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 </style>
@@ -200,6 +207,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
     <a href="#teams" data-tab="teams">팀 짜기</a>
     <a href="#ranking" data-tab="ranking">순위</a>
     <a href="#history" data-tab="history">기록</a>
+    <a href="#stats" data-tab="stats">통계</a>
     <a href="#players" data-tab="players">선수</a>
   </nav>
 
@@ -227,6 +235,10 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
   <section data-view="history" hidden>
     <div class="panel" id="history"></div>
     <input type="file" id="shotInput" accept="image/*" hidden>
+  </section>
+
+  <section data-view="stats" hidden>
+    <div class="panel" id="stats"></div>
   </section>
 
   <section data-view="players" hidden>
@@ -391,6 +403,26 @@ function parseNames(text) {
   }
   return out;
 }
+// 결과창(stats)이 있는 경기만 모아 선수별·챔피언별로 집계
+function aggregateStats(matches) {
+  const per = {}, champs = {};
+  const sum = (o, k, v) => { if (typeof v === 'number') { o[k] += v; o[k + 'N']++; } };
+  for (const m of matches) {
+    for (const [pid, st] of Object.entries(m.stats || {})) {
+      const won = ((m.blue || []).includes(pid) ? 'blue' : 'red') === m.winner;
+      const a = per[pid] || (per[pid] = { n: 0, w: 0, k: 0, d: 0, a: 0, cs: 0, csN: 0, gold: 0, goldN: 0, dmg: 0, dmgN: 0, champs: {} });
+      a.n++; if (won) a.w++;
+      a.k += st.kills || 0; a.d += st.deaths || 0; a.a += st.assists || 0;
+      sum(a, 'cs', st.cs); sum(a, 'gold', st.gold); sum(a, 'dmg', st.damage);
+      const c = String(st.champion || '').trim();
+      if (c) {
+        for (const t of [a.champs, champs]) { const x = t[c] || (t[c] = { n: 0, w: 0 }); x.n++; if (won) x.w++; }
+      }
+    }
+  }
+  return { per, champs };
+}
+const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
 const FIREBASE_CONFIG = {
@@ -590,6 +622,11 @@ const repo = {
       delete this.local.trash[id];
       await this.setMatch(id, doc);
     }
+  },
+  // 통계용 전체 경기 (기록 탭 구독은 최근 30경기만)
+  async allMatches() {
+    if (this.mode === 'db') return (await this.db.collection('matches').get()).docs.map(d => ({ id: d.id, ...d.data() }));
+    return Object.entries(this.local.matches).map(([id, d]) => ({ id, ...d }));
   },
   async purgeTrash(id) {
     if (this.mode === 'db') return this.db.doc('trash/' + id).delete();
@@ -816,14 +853,57 @@ function renderPlayers() {
   ['btnEditSave', 'btnEditDelete'].forEach(id => { $(id).disabled = state.busy; });
 }
 
+let statsReq = 0;
+async function loadStats() {
+  if (repo.mode === 'loading') return;
+  const req = ++statsReq;
+  state.stats = { ...(state.stats || {}), loading: true }; renderStats();
+  try {
+    const data = aggregateStats(await repo.allMatches());
+    if (req === statsReq) state.stats = { data };
+  } catch (e) {
+    if (req === statsReq) state.stats = { err: '통계를 불러오지 못했습니다. 잠시 후 다시 열어 주세요.' };
+  }
+  renderStats();
+}
+function renderStats() {
+  const el = $('stats'), st = state.stats;
+  if (!st || (st.loading && !st.data)) { el.innerHTML = '<h2>통계</h2><div class="empty">통계를 불러오는 중입니다.</div>'; return; }
+  if (st.err) { el.innerHTML = `<h2>통계</h2><div class="empty">${esc(st.err)}</div>`; return; }
+  const map = pmap(), { per, champs } = st.data;
+  const ids = Object.keys(per).filter(id => map[id]).sort((a, b) => per[b].n - per[a].n || byName(map[a], map[b]));
+  if (!ids.length) { el.innerHTML = '<h2>통계</h2><div class="empty">결과창을 올린 경기가 아직 없습니다. 기록 탭에서 결과창을 올리면 여기에 쌓입니다.</div>'; return; }
+  const avg = (a, k) => (a[k + 'N'] ? a[k] / a[k + 'N'] : null);
+  const k1 = v => (v == null ? '–' : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v));
+  const pct = (w, n) => Math.round(w / n * 100) + '%';
+  const cards = ids.map(id => {
+    const a = per[id], n = a.n;
+    const top = Object.entries(a.champs).sort((x, y) => y[1].n - x[1].n || y[1].w - x[1].w).slice(0, 3);
+    return `<div class="stat-card">
+      <div class="row between"><b>${esc(map[id].name)}</b><span class="muted num">${n}판 · 승률 ${pct(a.w, n)}</span></div>
+      <div class="stat-line"><span class="label">K/D/A</span><span class="num">${(a.k / n).toFixed(1)} / ${(a.d / n).toFixed(1)} / ${(a.a / n).toFixed(1)}</span><span class="num kda-r">KDA ${kdaRatio(a).toFixed(2)}</span></div>
+      <div class="stat-line"><span class="label">평균</span><span class="num">CS ${k1(avg(a, 'cs'))} · 골드 ${k1(avg(a, 'gold'))} · 딜 ${k1(avg(a, 'dmg'))}</span></div>
+      ${top.length ? `<div class="champs">${top.map(([c, x]) => `<span class="champ">${esc(c)} <span class="num muted">${x.n}판 ${pct(x.w, x.n)}</span></span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  const ranks = Object.entries(champs).sort((x, y) => y[1].n - x[1].n || y[1].w - x[1].w).slice(0, 10);
+  el.innerHTML = `<div class="row between"><h2>통계</h2><span class="muted">결과창을 올린 경기 기준${st.loading ? ' · 새로고침 중' : ''}</span></div>
+    <div class="stat-grid">${cards}</div>
+    <h2>많이 나온 챔피언</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>챔피언</th><th class="r">판</th><th class="r">승률</th></tr></thead>
+      <tbody>${ranks.map(([c, x], i) => `<tr><td class="rank">${i + 1}</td><td>${esc(c)}</td><td class="r num">${x.n}</td><td class="r num">${pct(x.w, x.n)}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+}
 function renderAll() { renderHeader(); renderTeams(); renderRanking(); renderHistory(); renderPlayers(); }
 
 // ---------- 동작
 function route() {
-  const tabs = ['teams', 'ranking', 'history', 'players'];
+  const tabs = ['teams', 'ranking', 'history', 'stats', 'players'];
   const cur = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'teams';
   document.querySelectorAll('[data-view]').forEach(s => { s.hidden = s.dataset.view !== cur; });
   document.querySelectorAll('[data-tab]').forEach(a => { if (a.dataset.tab === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (cur === 'stats') loadStats();
 }
 window.addEventListener('hashchange', route);
 
@@ -1128,6 +1208,8 @@ $('btnEditDelete').addEventListener('click', async () => {
 });
 
 repo.onChange(renderAll);
+let statsBooted = false;
+repo.onChange(() => { if (!statsBooted && repo.mode !== 'loading' && location.hash === '#stats') { statsBooted = true; loadStats(); } });
 route(); renderAll();
 repo.init();
 </script>
