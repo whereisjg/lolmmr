@@ -401,8 +401,8 @@ const FIREBASE_CONFIG = {
   messagingSenderId: '945149894238',
   appId: '1:945149894238:web:22910898673197e1381ecf'
 };
-// 결과창 인식 Cloudflare Worker 주소 (worker/scoreboard.js). 비어 있으면 업로드 버튼을 숨긴다
-const VISION_URL = 'https://lolmmr-vision.whereisjg-a74.workers.dev';
+// 결과창 인식 중계 주소. Google Apps Script 웹 앱(worker/apps-script.gs). Cloudflare Worker(worker/scoreboard.js)는 Gemini 지역 제한으로 사용 안 함. 비어 있으면 업로드 버튼을 숨긴다
+const VISION_URL = 'https://script.google.com/macros/s/AKfycbyIacMN-sCpG2OmYJxInwXeIrze1YGTAcqDk5caZMEu83MZTVYspPzckJDt8uJWmmRe/exec';
 const LS_KEY = 'mmr-balancer-v1';
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
