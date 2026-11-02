@@ -991,7 +991,8 @@ $('shotInput').addEventListener('change', async e => {
   const m = repo.matches.find(x => x.id === u.mid); if (!m) return;
   state.upload = { mid: u.mid, loading: true }; renderHistory();
   try {
-    const res = await fetch(VISION_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: await shrink(file), mime: 'image/jpeg' }) });
+    // text/plain: CORS preflight 없이 보내야 Apps Script 웹 앱도 받을 수 있다 (Worker는 본문만 JSON이면 됨)
+    const res = await fetch(VISION_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ image: await shrink(file), mime: 'image/jpeg' }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.result) throw new Error(data.error || '결과창을 읽지 못했습니다.');
     if (!(data.result.players || []).length) throw new Error('플레이어를 찾지 못했습니다. 결과창 전체가 보이게 다시 찍어 주세요.');
