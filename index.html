@@ -141,7 +141,13 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap
 tr:last-child td { border-bottom: 0; }
 td.r, th.r { text-align: right; }
 td.rank { font-family: var(--font-num); font-weight: 700; color: var(--muted); width: 2.5em; }
-tr.top1 td.rank { color: var(--gold); }
+/* 1위: 황족 */
+tr.top1 td { background: var(--gold-soft); font-weight: 700; }
+tr.top1 td, tr.top1 td * { color: var(--gold) !important; }
+tr.top1 td:first-child { border-radius: 8px 0 0 8px; }
+tr.top1 td:last-child { border-radius: 0 8px 8px 0; }
+tr.top1 .tag { background: var(--surface); border: 1px solid var(--gold); }
+.crown { margin-right: 4px; font-size: 17px; line-height: 1; vertical-align: -1px; }
 td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .tag.coward { background: var(--red-soft); color: var(--red); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); margin-left: 6px; font-weight: 700; vertical-align: 1px; }
@@ -948,7 +954,7 @@ function renderRanking() {
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="3판 2선 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
-        <td>${esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" title="주 포지션만 고르고 부 포지션을 고르지 않았습니다">비겁자</span>' : ''}</td>
+        <td>${i === 0 ? '<span class="crown" aria-label="1위">♛</span>' : ''}${esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" title="주 포지션만 고르고 부 포지션을 고르지 않았습니다">비겁자</span>' : ''}</td>
         <td class="r mmr">${p.mmr}</td>
         <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패</td>
         <td class="r num muted">${p.wins}-${p.losses}</td>
