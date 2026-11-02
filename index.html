@@ -236,6 +236,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
     <div class="panel" id="history"></div>
     <input type="file" id="shotInput" accept="image/*" hidden>
     <input type="file" id="replayInput" accept=".rofl" hidden>
+    <input type="file" id="replaySeriesInput" accept=".rofl" multiple hidden>
   </section>
 
   <section data-view="stats" hidden>
@@ -485,6 +486,23 @@ function parseReplayText(text, names = {}) {
     players, teams: [], notes: '리플레이 파일에서 읽음'
   };
 }
+// 리플레이 파일 이름의 경기 번호(KR-8439040907). 나중 경기일수록 크다
+function replayGameId(fileName) { const m = String(fileName).match(/(\d{8,})/); return m ? m[1] : null; }
+// rowMap {행: 선수id}로 우리 블루팀이 게임 안에서 어느 진영이었는지 다수결로 정하고, 시리즈 기준 승리 팀을 돌려준다
+function replayWinner(parsed, rowMap, series) {
+  const vote = { blue: 0, red: 0 };
+  let mapped = 0, mixed = 0;
+  for (const [i, pid] of Object.entries(rowMap)) {
+    const side = parsed.players[i].team; if (side !== 'blue' && side !== 'red') continue;
+    mapped++;
+    const ourBlue = series.blue.includes(pid);
+    vote[ourBlue ? side : side === 'blue' ? 'red' : 'blue']++;
+  }
+  if (!mapped || parsed.winner === 'unknown') return { winner: null, mapped };
+  const blueSide = vote.blue >= vote.red ? 'blue' : 'red';
+  mixed = Math.min(vote.blue, vote.red);
+  return { winner: parsed.winner === blueSide ? 'blue' : 'red', mapped, mixed };
+}
 const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
@@ -709,7 +727,7 @@ const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
 const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
-  picking: null, pick: new Set(), swapId: null, upload: null,
+  picking: null, pick: new Set(), swapId: null, upload: null, replayPlan: null,
   lastKey: null, confirmReset: false, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
 };
 const pmap = () => Object.fromEntries(repo.players.map(p => [p.id, p]));
@@ -812,6 +830,7 @@ function renderTeams() {
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
+    ${replayPlanHtml(s)}
     <span class="muted">${canSwap ? '선수를 누르고 상대 팀 선수를 누르면 서로 바뀝니다. ' : '시리즈가 끝날 때까지 팀이 유지됩니다. MMR은 세트마다 반영됩니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
@@ -1083,6 +1102,9 @@ $('btnManual').addEventListener('click', manualSplit);
 
 $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReroll') return makeSplit();
+  if (e.target.id === 'btnReplaySeries') { $('replaySeriesInput').click(); return; }
+  if (e.target.id === 'btnReplayCancel') { state.replayPlan = null; renderTeams(); return; }
+  if (e.target.id === 'btnReplayRecord') return recordReplayPlan();
   const sw = e.target.closest('[data-swap]'); if (sw) return swapPick(sw.dataset.swap);
   if (e.target.id === 'btnClose') { run(() => repo.setSeries(null)); return; }
   if (e.target.id === 'btnAgain') {
@@ -1142,6 +1164,73 @@ async function lolNames() {
     return out;
   } catch (e) { return {}; }
 }
+// ---- 리플레이 여러 개로 시리즈 기록: 경기 번호순으로 세트를 정하고 승패·통계를 한 번에 반영
+function replayPlanHtml(s) {
+  const plan = state.replayPlan, dis = state.busy ? 'disabled' : '';
+  if (!plan) return `<div class="row"><button class="small" id="btnReplaySeries" ${dis} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일">리플레이로 기록 (여러 개 선택)</button></div>`;
+  if (plan.loading) return '<div class="shot">리플레이를 읽는 중입니다.</div>';
+  if (plan.err) return `<div class="shot"><span class="down">${esc(plan.err)}</span><div class="row"><button class="small" id="btnReplayCancel">닫기</button></div></div>`;
+  const played = s.score.blue + s.score.red;
+  const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${played + k + 1}세트 · ${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span></div>`).join('');
+  const bad = plan.items.some(it => !it.winner);
+  return `<div class="shot">
+    <span class="muted">경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.${plan.skipped ? ` 이미 기록된 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}</span>
+    ${rows}
+    ${bad ? '<span class="down">닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.</span>' : ''}
+    <div class="row"><button class="small primary" id="btnReplayRecord" ${bad || !plan.items.length ? 'disabled' : dis}>기록하기</button><button class="small" id="btnReplayCancel">취소</button></div>
+  </div>`;
+}
+const waitFor = (fn, ms = 6000) => new Promise(res => { const t0 = Date.now(); const tick = () => (fn() || Date.now() - t0 > ms ? res() : setTimeout(tick, 100)); tick(); });
+$('replaySeriesInput').addEventListener('change', async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  const s = repo.series; if (!files.length || !s) return;
+  state.replayPlan = { loading: true }; renderTeams();
+  try {
+    const names = await lolNames(), map = pmap();
+    const fake = { blue: s.blue, red: s.red, names: Object.fromEntries([...s.blue, ...s.red].map(id => [id, map[id].name])) };
+    const known = new Set((await repo.allMatches()).map(m => m.statsMeta && m.statsMeta.gameId).filter(Boolean));
+    let items = [];
+    for (const f of files) {
+      const tail = await f.slice(Math.max(0, f.size - 2 * 1024 * 1024)).arrayBuffer();
+      const parsed = parseReplayText(new TextDecoder('utf-8').decode(tail), names);
+      const rowMap = autoMap(fake, parsed.players);
+      items.push({ name: f.name, gameId: replayGameId(f.name), parsed, rowMap, ...replayWinner(parsed, rowMap, s) });
+    }
+    const before = items.length;
+    items = items.filter(it => !it.gameId || !known.has(it.gameId));
+    items.sort((a, b) => (a.gameId && b.gameId ? (BigInt(a.gameId) < BigInt(b.gameId) ? -1 : 1) : 0));
+    state.replayPlan = { items, skipped: before - items.length };
+  } catch (err) {
+    state.replayPlan = { err: err.message || '리플레이를 읽지 못했습니다.' };
+  }
+  renderTeams();
+});
+async function recordReplayPlan() {
+  const plan = state.replayPlan; let done = 0;
+  const ok = await run(async () => {
+    for (const it of plan.items) {
+      const s = repo.series; if (!s || s.done) break;
+      const map = pmap(), ids = [...s.blue, ...s.red];
+      const { deltas, pBlue } = computeDeltas(s.blue, s.red, it.winner, map, s.roles);
+      const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
+      const played = s.score.blue + s.score.red, g0 = map[ids[0]].games;
+      await repo.recordGame(s, it.winner, deltas, pBlue, names, map);
+      // 공유 저장 반영(다음 세트 MMR 계산용)을 기다린다
+      await waitFor(() => repo.series && repo.series.score.blue + repo.series.score.red > played && pmap()[ids[0]].games > g0);
+      const stats = {};
+      for (const [i, pid] of Object.entries(it.rowMap)) stats[pid] = it.parsed.players[i];
+      const { duration, winner: side, teams, notes } = it.parsed;
+      await repo.updateMatch(s.sid + '-g' + (played + 1), { stats, statsMeta: { duration, winner: side, teams, notes, gameId: it.gameId || '', shots: 1, ts: Date.now() } });
+      for (const [pid, st] of Object.entries(stats)) {
+        const p = pmap()[pid], rn = (p && p.riotNames) || [];
+        if (p && st.name && !rn.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...rn, st.name] });
+      }
+      done++;
+    }
+  });
+  state.replayPlan = null; renderAll();
+  if (ok || done) toast(`리플레이 ${done}개로 ${done}세트를 기록했습니다.`);
+}
 $('replayInput').addEventListener('change', async e => {
   const file = e.target.files[0]; e.target.value = '';
   const u = state.upload; if (!file || !u) return;
@@ -1151,6 +1240,7 @@ $('replayInput').addEventListener('change', async e => {
     // 결과 데이터는 파일 끝에 있으므로 마지막 2MB만 읽는다
     const tail = await file.slice(Math.max(0, file.size - 2 * 1024 * 1024)).arrayBuffer();
     const parsed = parseReplayText(new TextDecoder('utf-8').decode(tail), await lolNames());
+    parsed.gameId = replayGameId(file.name) || '';
     state.upload = { mid: u.mid, parsed, map: autoMap(m, parsed.players) };
   } catch (err) {
     state.upload = { mid: u.mid, err: err.message || '리플레이를 읽지 못했습니다.' };
@@ -1200,7 +1290,7 @@ $('history').addEventListener('click', async e => {
     const duration = u.parsed.duration || old.duration || '', winner = u.parsed.winner && u.parsed.winner !== 'unknown' ? u.parsed.winner : (old.winner || 'unknown');
     const teams = (u.parsed.teams || []).length ? u.parsed.teams : (old.teams || []), notes = u.parsed.notes || old.notes || '';
     const ok = await run(async () => {
-      await repo.updateMatch(m.id, { stats: merged, statsMeta: { duration, winner, teams, notes, shots: (old.shots || (m.stats ? 1 : 0)) + 1, ts: Date.now() } });
+      await repo.updateMatch(m.id, { stats: merged, statsMeta: { duration, winner, teams, notes, gameId: u.parsed.gameId || old.gameId || '', shots: (old.shots || (m.stats ? 1 : 0)) + 1, ts: Date.now() } });
       for (const [pid, st] of Object.entries(stats)) {
         const p = pm[pid], names = (p && p.riotNames) || [];
         if (p && st.name && !names.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...names, st.name] });
