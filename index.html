@@ -1273,6 +1273,14 @@ async function lolNames() {
   } catch (e) { return {}; }
 }
 // ---- 리플레이 여러 개로 시리즈 기록: 경기 번호순으로 세트를 정하고 승패·통계를 한 번에 반영
+function unmatchedHtml(plan, s) {
+  if (!plan.unmatched || !plan.unmatched.length) return '';
+  const map = pmap(), auto = new Set(plan.items.flatMap(it => Object.values(it.baseMap)));
+  const free = [...s.blue, ...s.red].filter(id => !auto.has(id) && map[id]);
+  return `<span class="muted"><b>닉네임이 연결되지 않은 플레이어</b> · 누구인지 고르면 모든 파일에 적용되고, 닉네임은 다음부터 자동으로 연결됩니다.</span>
+    ${plan.unmatched.map((u, k) => `<div class="shot-row"><span class="shot-who"><b class="${u.team === 'red' ? 'down' : 'b'}">${esc(u.name)}</b> · ${esc(u.champion)}</span>
+      <select data-uname="${k}" aria-label="${esc(u.name)} 선수 선택"><option value="">선택 안 함</option>${free.map(id => `<option value="${esc(id)}" ${plan.extra[u.name] === id ? 'selected' : ''}>${esc(map[id].name)}</option>`).join('')}</select></div>`).join('')}`;
+}
 function replayPlanHtml(s) {
   const plan = state.replayPlan, dis = state.busy ? 'disabled' : '';
   if (!plan) return '';
@@ -1288,6 +1296,7 @@ function replayPlanHtml(s) {
   return `<div class="shot">
     <span class="muted">${attach ? '이 시리즈의 세트에 통계만 붙입니다. 승패와 MMR은 바뀌지 않습니다. 경기 번호순으로 세트를 골라 두었으니, 빠진 리플레이가 있으면 오른쪽에서 세트를 고쳐 주세요.' : '경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.'}${plan.skipped ? ` 이미 기록됐거나 같은 경기인 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}${plan.renamed ? ` <span class="down">이름이 바뀐 파일 ${plan.renamed}개는 순서를 알 수 없어 맨 뒤에 두었습니다.</span>` : ''}</span>
     ${rows}
+    ${unmatchedHtml(plan, s)}
     ${bad ? `<span class="down">${attach ? (dupTarget ? '두 리플레이가 같은 세트를 가리키고 있습니다. 세트를 다시 골라 주세요.' : '붙일 수 있는 리플레이가 없습니다. 닉네임 연결이나 세트 선택을 확인해 주세요.') : '닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.'}</span>` : ''}
     <div class="row"><button class="small primary" id="btnReplayRecord" ${bad || !plan.items.length ? 'disabled' : dis}>${attach ? '통계 추가' : '기록하기'}</button><button class="small" id="btnReplayCancel">취소</button></div>
   </div>`;
@@ -1318,13 +1327,17 @@ $('replaySeriesInput').addEventListener('change', async e => {
       const tail = await f.slice(Math.max(0, f.size - 2 * 1024 * 1024)).arrayBuffer();
       const parsed = parseReplayText(new TextDecoder('utf-8').decode(tail), names);
       const rowMap = autoMap(fake, parsed.players);
-      items.push({ name: f.name, gameId: replayGameId(f.name), parsed, rowMap, ...replayWinner(parsed, rowMap, s) });
+      items.push({ name: f.name, gameId: replayGameId(f.name), parsed, baseMap: rowMap, rowMap, ...replayWinner(parsed, rowMap, s) });
     }
     const before = items.length, seen = new Set();
     // 2. 이미 기록된 경기 번호와, 이번 선택 안에서 같은 번호(같은 리플레이를 두 번 받은 파일)는 뺀다
     items = items.filter(it => { if (!it.gameId) return true; if (known.has(it.gameId) || seen.has(it.gameId)) return false; seen.add(it.gameId); return true; });
     items.sort(byGameId); // 6
-    const plan = { sid: s.sid, done: !!s.done, items, skipped: before - items.length, renamed: items.filter(it => !it.gameId).length };
+    const plan = { sid: s.sid, done: !!s.done, items, skipped: before - items.length, renamed: items.filter(it => !it.gameId).length, extra: {} };
+    // 닉네임이 등록되지 않아 자동 연결이 안 된 플레이어(이름별 하나). 미리보기에서 직접 고르면 모든 파일에 적용된다
+    const seenName = new Set();
+    plan.unmatched = [];
+    for (const it of items) it.parsed.players.forEach((pl, i) => { if (!(i in it.baseMap) && pl.name && !seenName.has(pl.name)) { seenName.add(pl.name); plan.unmatched.push({ name: pl.name, champion: pl.champion, team: pl.team }); } });
     if (s.done) {
       // 5. 끝난 시리즈: 아직 리플레이 통계가 없는 세트에 기본은 순서대로 배정하고, 미리보기에서 세트를 바꿀 수 있다
       plan.mode = 'attach';
@@ -1337,10 +1350,27 @@ $('replaySeriesInput').addEventListener('change', async e => {
   }
   renderTeams();
 });
+// 직접 고른 연결(plan.extra: 닉네임→선수)을 자동 연결에 더하고 승패를 다시 판정한다
+function applyExtraMap(plan, s) {
+  for (const it of plan.items) {
+    const rowMap = { ...it.baseMap }, used = new Set(Object.values(rowMap));
+    it.parsed.players.forEach((pl, i) => { const pid = plan.extra[pl.name]; if (!(i in rowMap) && pid && !used.has(pid)) { rowMap[i] = pid; used.add(pid); } });
+    it.rowMap = rowMap;
+    Object.assign(it, { mixed: 0 }, replayWinner(it.parsed, rowMap, s));
+  }
+}
 $('result').addEventListener('change', e => {
-  const sel = e.target.closest('[data-target]'); const plan = state.replayPlan;
-  if (!sel || !plan || !plan.items) return;
-  plan.items[+sel.dataset.target].targetId = sel.value; renderTeams();
+  const plan = state.replayPlan; if (!plan || !plan.items) return;
+  const sel = e.target.closest('[data-target]');
+  if (sel) { plan.items[+sel.dataset.target].targetId = sel.value; renderTeams(); return; }
+  const un = e.target.closest('[data-uname]');
+  if (un) {
+    const name = plan.unmatched[+un.dataset.uname].name;
+    // 같은 선수를 두 닉네임에 연결하지 않도록 이전 연결은 푼다
+    for (const k of Object.keys(plan.extra)) if (plan.extra[k] === un.value) delete plan.extra[k];
+    if (un.value) plan.extra[name] = un.value; else delete plan.extra[name];
+    applyExtraMap(plan, repo.series); renderTeams();
+  }
 });
 async function attachReplayPlan() {
   const plan = state.replayPlan; let n = 0;
