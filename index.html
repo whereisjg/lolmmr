@@ -128,6 +128,7 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .swing { font-family: var(--font-num); font-size: 12px; color: var(--muted); }
 .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .actions.two { grid-template-columns: 1fr 1fr; }
+.actions.one { grid-template-columns: 1fr; }
 .team li.swappable { cursor: pointer; border-radius: 6px; margin: 0 -6px; padding: 2px 6px; }
 .team li.swappable:hover { background: var(--surface); }
 .team li.swap-on { background: var(--gold-soft); outline: 2px solid var(--gold); }
@@ -277,7 +278,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         </li>
         <li><b>버튼으로 (리플레이를 올리지 않을 때):</b> 폰으로 기록하거나 리플레이를 받을 수 없을 때 씁니다. 세트가 끝날 때마다 <b>블루 승리</b> 또는 <b>레드 승리</b>를 누릅니다. 이 방법은 승패와 MMR만 기록되므로, 통계가 필요하면 나중에 기록 탭에서 결과창이나 리플레이를 올려 주세요.</li>
       </ol>
-      <p>시리즈가 끝나면 결과가 화면에 남습니다. <b>같은 팀으로 한 번 더</b> 또는 <b>결과 닫기</b>를 누르세요.</p>
+      <p>시리즈가 끝나면 결과가 화면에 남습니다. <b>같은 팀으로 한 번 더</b> 또는 <b>결과 닫기</b>를 누르세요. 버튼으로 기록했다면 이 화면의 <b>리플레이로 통계 추가</b>로 각 세트에 통계만 붙일 수 있습니다(승패·MMR은 그대로).</p>
 
       <h3>경기 통계 넣기</h3>
       <ul>
@@ -896,6 +897,8 @@ function renderTeams() {
       <button class="primary" id="btnAgain" ${dis}>같은 팀으로 한 번 더</button>
       <button id="btnClose" ${dis}>결과 닫기</button>
     </div>
+    <div class="actions one"><button id="btnReplaySeries" ${dis} title="이미 기록된 세트에 리플레이 통계만 붙입니다">리플레이로 통계 추가</button></div>
+    ${replayPlanHtml(s)}
     <span class="muted">새로 짜려면 위에서 참가자를 고르고 팀 짜기를 누르세요.</span>` : `<div class="actions two">
       ${played ? `<button id="btnEndSeries" ${dis}>시리즈 종료</button>` : `<button id="btnReroll" ${dis}>다시 짜기</button>`}
       <button id="btnReplaySeries" ${dis} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일 여러 개">리플레이로 기록</button>
@@ -1244,14 +1247,14 @@ function replayPlanHtml(s) {
   if (!plan) return '';
   if (plan.loading) return '<div class="shot">리플레이를 읽는 중입니다.</div>';
   if (plan.err) return `<div class="shot"><span class="down">${esc(plan.err)}</span><div class="row"><button class="small" id="btnReplayCancel">닫기</button></div></div>`;
-  const played = s.score.blue + s.score.red;
-  const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${played + k + 1}세트 · ${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span></div>`).join('');
-  const bad = plan.items.some(it => !it.winner);
+  const attach = plan.mode === 'attach', played = attach ? 0 : s.score.blue + s.score.red;
+  const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${attach ? (it.target ? `${it.target.game}세트` : '<span class="down">붙일 세트 없음</span>') : `${played + k + 1}세트`} · ${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'}${attach && it.target && it.winner && it.winner !== it.target.winner ? ' · <span class="down">기록과 다름</span>' : ''} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span></div>`).join('');
+  const bad = attach ? !plan.items.some(it => it.target && it.mapped) : plan.items.some(it => !it.winner);
   return `<div class="shot">
-    <span class="muted">경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.${plan.skipped ? ` 이미 기록된 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}</span>
+    <span class="muted">${attach ? '경기 번호순으로 이 시리즈의 세트에 통계만 붙입니다. 승패와 MMR은 바뀌지 않습니다.' : '경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.'}${plan.skipped ? ` 이미 기록된 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}</span>
     ${rows}
-    ${bad ? '<span class="down">닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.</span>' : ''}
-    <div class="row"><button class="small primary" id="btnReplayRecord" ${bad || !plan.items.length ? 'disabled' : dis}>기록하기</button><button class="small" id="btnReplayCancel">취소</button></div>
+    ${bad ? `<span class="down">${attach ? '붙일 수 있는 리플레이가 없습니다. 닉네임 연결이나 세트 수를 확인해 주세요.' : '닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.'}</span>` : ''}
+    <div class="row"><button class="small primary" id="btnReplayRecord" ${bad || !plan.items.length ? 'disabled' : dis}>${attach ? '통계 추가' : '기록하기'}</button><button class="small" id="btnReplayCancel">취소</button></div>
   </div>`;
 }
 const waitFor = (fn, ms = 6000) => new Promise(res => { const t0 = Date.now(); const tick = () => (fn() || Date.now() - t0 > ms ? res() : setTimeout(tick, 100)); tick(); });
@@ -1273,14 +1276,39 @@ $('replaySeriesInput').addEventListener('change', async e => {
     const before = items.length;
     items = items.filter(it => !it.gameId || !known.has(it.gameId));
     items.sort((a, b) => (a.gameId && b.gameId ? (BigInt(a.gameId) < BigInt(b.gameId) ? -1 : 1) : 0));
-    state.replayPlan = { items, skipped: before - items.length };
+    if (s.done) {
+      // 끝난 시리즈: 이 시리즈의 세트(통계가 아직 리플레이로 안 붙은 것) 순서대로 붙인다
+      const games = (await repo.allMatches()).filter(m => m.series === s.sid && !(m.statsMeta && m.statsMeta.gameId)).sort((a, b) => a.game - b.game);
+      items.forEach((it, k) => { it.target = games[k] || null; });
+      state.replayPlan = { mode: 'attach', items, skipped: before - items.length };
+    } else state.replayPlan = { items, skipped: before - items.length };
   } catch (err) {
     state.replayPlan = { err: err.message || '리플레이를 읽지 못했습니다.' };
   }
   renderTeams();
 });
+async function attachReplayPlan() {
+  const plan = state.replayPlan; let n = 0;
+  await run(async () => {
+    for (const it of plan.items) {
+      if (!it.target || !it.mapped) continue;
+      const m = it.target, merged = { ...(m.stats || {}) };
+      for (const [i, pid] of Object.entries(it.rowMap)) merged[pid] = mergeStat(merged[pid], it.parsed.players[i]);
+      const { duration, winner: side, teams, notes } = it.parsed;
+      await repo.updateMatch(m.id, { stats: merged, statsMeta: { ...(m.statsMeta || {}), duration, winner: side, teams, notes, gameId: it.gameId || '', ts: Date.now() } });
+      for (const [i, pid] of Object.entries(it.rowMap)) {
+        const p = pmap()[pid], rn = (p && p.riotNames) || [], nm = it.parsed.players[i].name;
+        if (p && nm && !rn.includes(nm)) await repo.updatePlayer(pid, { riotNames: [...rn, nm] });
+      }
+      n++;
+    }
+  });
+  state.replayPlan = null; renderAll();
+  if (n) toast(`${n}세트에 리플레이 통계를 붙였습니다.`);
+}
 async function recordReplayPlan() {
   const plan = state.replayPlan; let done = 0;
+  if (plan.mode === 'attach') return attachReplayPlan();
   const ok = await run(async () => {
     for (const it of plan.items) {
       const s = repo.series; if (!s || s.done) break;
