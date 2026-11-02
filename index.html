@@ -147,12 +147,14 @@ td.rank { font-family: var(--font-num); font-weight: 700; color: var(--muted); w
 tr.top1 td { background: transparent; font-weight: 700; }
 tr.top1 { background: linear-gradient(105deg, var(--gold-soft) 35%, var(--gold-shine) 50%, var(--gold-soft) 65%) 0 0 / 300% 100%; animation: royal-sweep 3.2s ease-in-out infinite; }
 @keyframes royal-sweep { 0% { background-position: 100% 0; } 60%, 100% { background-position: 0 0; } }
-tr.top1 .royal { background: linear-gradient(90deg, var(--gold) 0%, var(--gold) 40%, var(--gold-glint) 50%, var(--gold) 60%, var(--gold) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: royal-text 2.4s linear infinite; }
+tr.top1 .royal, .royal-card .royal { background: linear-gradient(90deg, var(--gold) 0%, var(--gold) 40%, var(--gold-glint) 50%, var(--gold) 60%, var(--gold) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: royal-text 2.4s linear infinite; }
 @keyframes royal-text { from { background-position: 100% 0; } to { background-position: 0 0; } }
-tr.top1 .crown { display: inline-block; animation: royal-crown 2.4s ease-in-out infinite; }
+tr.top1 .crown, .royal-card .crown { display: inline-block; animation: royal-crown 2.4s ease-in-out infinite; }
 @keyframes royal-crown { 0%, 100% { transform: translateY(0); text-shadow: 0 0 0 transparent; } 50% { transform: translateY(-2px); text-shadow: 0 0 8px var(--gold-glint); } }
-@media (prefers-reduced-motion: reduce) { tr.top1, tr.top1 .royal, tr.top1 .crown { animation: none; } tr.top1 { background: var(--gold-soft); } }
-tr.top1 td, tr.top1 td * { color: var(--gold) !important; }
+@media (prefers-reduced-motion: reduce) { tr.top1, tr.top1 .royal, tr.top1 .crown, .royal-card, .royal-card .royal, .royal-card .crown { animation: none; } tr.top1, .royal-card { background: var(--gold-soft); } }
+tr.top1 td, tr.top1 td *, .royal-card, .royal-card * { color: var(--gold) !important; }
+.royal-card { border-color: var(--gold); font-weight: 700; background: linear-gradient(105deg, var(--gold-soft) 35%, var(--gold-shine) 50%, var(--gold-soft) 65%) 0 0 / 300% 100%; animation: royal-sweep 3.2s ease-in-out infinite; }
+.royal-card .champ { background: var(--surface); border-color: var(--gold); }
 tr.top1 td:first-child { border-radius: 8px 0 0 8px; }
 tr.top1 td:last-child { border-radius: 0 8px 8px 0; }
 tr.top1 .tag { background: var(--surface); border: 1px solid var(--gold); }
@@ -1075,7 +1077,10 @@ function renderStats() {
   if (!st || (st.loading && !st.data)) { el.innerHTML = '<h2>통계</h2><div class="empty">통계를 불러오는 중입니다.</div>'; return; }
   if (st.err) { el.innerHTML = `<h2>통계</h2><div class="empty">${esc(st.err)}</div>`; return; }
   const map = pmap(), { per, champs } = st.data;
-  const ids = Object.keys(per).filter(id => map[id]).sort((a, b) => per[b].n - per[a].n || byName(map[a], map[b]));
+  // 순위 탭과 같은 순서(MMR 내림차순). 1위(한 세트 이상 뛴 선수 중 MMR 최고)는 황금 카드
+  const rankOrder = (a, b) => map[b].mmr - map[a].mmr || byName(map[a], map[b]);
+  const ids = Object.keys(per).filter(id => map[id]).sort(rankOrder);
+  const king = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => b.mmr - a.mmr || byName(a, b))[0];
   if (!ids.length) { el.innerHTML = '<h2>통계</h2><div class="empty">결과창을 올린 경기가 아직 없습니다. 기록 탭에서 결과창을 올리면 여기에 쌓입니다.</div>'; return; }
   const avg = (a, k) => (a[k + 'N'] ? a[k] / a[k + 'N'] : null);
   const k1 = v => (v == null ? '–' : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v));
@@ -1083,8 +1088,9 @@ function renderStats() {
   const cards = ids.map(id => {
     const a = per[id], n = a.n;
     const top = Object.entries(a.champs).sort((x, y) => y[1].n - x[1].n || y[1].w - x[1].w).slice(0, 3);
-    return `<div class="stat-card">
-      <div class="row between"><b>${esc(map[id].name)}</b><span class="muted num">${n}판 · 승률 ${pct(a.w, n)}</span></div>
+    const isKing = king && king.id === id;
+    return `<div class="stat-card${isKing ? ' royal-card' : ''}">
+      <div class="row between"><b>${isKing ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(map[id].name)}</span>` : esc(map[id].name)}</b><span class="muted num">${n}판 · 승률 ${pct(a.w, n)}</span></div>
       <div class="stat-line"><span class="label">K/D/A</span><span class="num">${(a.k / n).toFixed(1)} / ${(a.d / n).toFixed(1)} / ${(a.a / n).toFixed(1)}</span><span class="num kda-r">KDA ${kdaRatio(a).toFixed(2)}</span></div>
       <div class="stat-line"><span class="label">평균</span><span class="num">CS ${k1(avg(a, 'cs'))} · 골드 ${k1(avg(a, 'gold'))} · 딜 ${k1(avg(a, 'dmg'))}</span></div>
       ${top.length ? `<div class="champs">${top.map(([c, x]) => `<span class="champ">${esc(c)} <span class="num muted">${x.n}판 ${pct(x.w, x.n)}</span></span>`).join('')}</div>` : ''}
