@@ -938,8 +938,11 @@ function renderTeams() {
 function renderRanking() {
   const el = $('ranking');
   if (!repo.players.length) { el.innerHTML = '<h2>순위</h2><div class="empty">선수를 추가하면 MMR 순위가 여기에 표시됩니다.</div>'; return; }
-  const list = [...repo.players].sort((a, b) => b.mmr - a.mmr || byName(a, b));
-  el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만</span></div>
+  // 한 세트도 뛰지 않은 선수(0승 0패)는 순위에서 뺀다
+  const list = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => b.mmr - a.mmr || byName(a, b));
+  const hidden = repo.players.length - list.length;
+  if (!list.length) { el.innerHTML = '<h2>순위</h2><div class="empty">아직 경기를 뛴 선수가 없습니다. 첫 세트를 기록하면 순위가 표시됩니다.</div>'; return; }
+  el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만${hidden ? ` · 기록 없는 ${hidden}명 숨김` : ''}</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="3판 2선 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
