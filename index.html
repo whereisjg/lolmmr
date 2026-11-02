@@ -26,6 +26,8 @@
   --red-soft: #fae5e5;
   --gold: #94690f;
   --gold-soft: #f6ecd4;
+  --gold-shine: #fffaea;
+  --gold-glint: #f2c94c;
   --good: #1d7f4e;
   --bad: #c2343a;
   --on-ink: #ffffff;
@@ -36,13 +38,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0d1017; --surface: #161a24; --surface-2: #1c212d; --ink: #e7e9ef; --muted: #959cad; --line: #2a3141;
-    --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716;
+    --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716; --gold-shine: #5c4718; --gold-glint: #fff1b8;
     --good: #4cc488; --bad: #f07474; --on-ink: #0d1017; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0d1017; --surface: #161a24; --surface-2: #1c212d; --ink: #e7e9ef; --muted: #959cad; --line: #2a3141;
-  --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716;
+  --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716; --gold-shine: #5c4718; --gold-glint: #fff1b8;
   --good: #4cc488; --bad: #f07474; --on-ink: #0d1017; color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -142,7 +144,14 @@ tr:last-child td { border-bottom: 0; }
 td.r, th.r { text-align: right; }
 td.rank { font-family: var(--font-num); font-weight: 700; color: var(--muted); width: 2.5em; }
 /* 1위: 황족 */
-tr.top1 td { background: var(--gold-soft); font-weight: 700; }
+tr.top1 td { background: transparent; font-weight: 700; }
+tr.top1 { background: linear-gradient(105deg, var(--gold-soft) 35%, var(--gold-shine) 50%, var(--gold-soft) 65%) 0 0 / 300% 100%; animation: royal-sweep 3.2s ease-in-out infinite; }
+@keyframes royal-sweep { 0% { background-position: 100% 0; } 60%, 100% { background-position: 0 0; } }
+tr.top1 .royal { background: linear-gradient(90deg, var(--gold) 0%, var(--gold) 40%, var(--gold-glint) 50%, var(--gold) 60%, var(--gold) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: royal-text 2.4s linear infinite; }
+@keyframes royal-text { from { background-position: 100% 0; } to { background-position: 0 0; } }
+tr.top1 .crown { display: inline-block; animation: royal-crown 2.4s ease-in-out infinite; }
+@keyframes royal-crown { 0%, 100% { transform: translateY(0); text-shadow: 0 0 0 transparent; } 50% { transform: translateY(-2px); text-shadow: 0 0 8px var(--gold-glint); } }
+@media (prefers-reduced-motion: reduce) { tr.top1, tr.top1 .royal, tr.top1 .crown { animation: none; } tr.top1 { background: var(--gold-soft); } }
 tr.top1 td, tr.top1 td * { color: var(--gold) !important; }
 tr.top1 td:first-child { border-radius: 8px 0 0 8px; }
 tr.top1 td:last-child { border-radius: 0 8px 8px 0; }
@@ -954,7 +963,7 @@ function renderRanking() {
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="3판 2선 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
-        <td>${i === 0 ? '<span class="crown" aria-label="1위">♛</span>' : ''}${esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" title="주 포지션만 고르고 부 포지션을 고르지 않았습니다">비겁자</span>' : ''}</td>
+        <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? '<span class="tag">배치</span>' : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" title="주 포지션만 고르고 부 포지션을 고르지 않았습니다">비겁자</span>' : ''}</td>
         <td class="r mmr">${p.mmr}</td>
         <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패</td>
         <td class="r num muted">${p.wins}-${p.losses}</td>
