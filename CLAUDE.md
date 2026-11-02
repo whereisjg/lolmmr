@@ -33,6 +33,12 @@
 - `worker/apps-script.gs`: 같은 기능의 Google Apps Script 웹 앱. **현재 사용 중**(`VISION_URL`). Cloudflare에서 Gemini가 `User location is not supported`를 낼 때 사용(Google 서버라 지역 제한 없음). 키는 스크립트 속성 `GEMINI_API_KEY`. Origin 검사 불가. PROMPT/SCHEMA는 scoreboard.js와 같게 유지
 - 사이트: 요청은 `text/plain`(preflight 없음)으로 보내 두 중계 모두 호환. `VISION_URL`이 있으면 기록 카드에 결과창 올리기 버튼. 이미지는 긴 변 2000px JPEG로 줄여 보냄 → `autoMap`(riotNames, 이름 일치/포함. 대소문자·공백·#태그 무시, l/I/1/|/i와 O/0/o는 같은 글자로 비교)으로 선수 연결 → 사용자가 확인 후 `repo.updateMatch`로 저장(이미 stats가 있으면 `mergeStat`으로 합침: 새로 읽힌 값만 덮고 null·빈 값은 기존 유지, extra는 key 기준 합침. 점수판 탭 + 통계 탭처럼 여러 장 올리기용), 연결한 닉네임은 `riotNames`에 추가
 
+## 리플레이(.rofl) 업로드
+- 기록 카드의 `리플레이 올리기`: 파일 끝 2MB만 읽어 `parseReplayText`로 `{"gameLength","statsJson"}`를 찾고(ROFL2 확인, 2026-11 기준) 결과창과 같은 모양으로 변환. AI·서버 없음
+- 챔피언(`SKIN`)·아이템 ID는 Data Dragon ko_KR(`lolNames`, `localStorage` `mmr-ddragon` 하루 캐시)로 한국어 이름 변환. 실패 시 원문
+- 이름은 `RIOT_ID_GAME_NAME#RIOT_ID_TAG_LINE`, CS는 미니언+정글, 딜량은 `TOTAL_DAMAGE_DEALT_TO_CHAMPIONS`, `extra`에 받은 피해·시야·와드·멀티킬 등. 팀 100=blue, 200=red(게임 내 진영)
+- 이후 선수 연결·저장·합치기는 결과창 업로드와 같음
+
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600
 - 팀 MMR = 평균. 기대 승률 `E = 1 / (1 + 10^((Rb - Ra) / 400))`

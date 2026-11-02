@@ -235,6 +235,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
   <section data-view="history" hidden>
     <div class="panel" id="history"></div>
     <input type="file" id="shotInput" accept="image/*" hidden>
+    <input type="file" id="replayInput" accept=".rofl" hidden>
   </section>
 
   <section data-view="stats" hidden>
@@ -438,6 +439,51 @@ function mergeStat(old, neu) {
   }
   out.extra = extra;
   return out;
+}
+// 리플레이(.rofl) 끝부분 텍스트에서 {"gameLength":..,"statsJson":"[...]"} 를 찾아 결과창과 같은 모양으로 바꾼다
+// names: { champ: {Jax:'잭스'}, item: {'3157':'존야의 모래시계'} } (없으면 원문)
+function parseReplayText(text, names = {}) {
+  const start = text.lastIndexOf('{"gameLength"');
+  if (start < 0) throw new Error('리플레이에서 경기 결과를 찾지 못했습니다. 게임이 끝까지 진행된 리플레이인지 확인해 주세요.');
+  // 문자열 안의 중괄호는 건너뛰며 짝이 맞는 위치까지 자른다
+  let depth = 0, inStr = false, end = -1;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true; else if (c === '{') depth++; else if (c === '}' && --depth === 0) { end = i + 1; break; }
+  }
+  if (end < 0) throw new Error('리플레이 결과 데이터가 잘려 있습니다.');
+  const meta = JSON.parse(text.slice(start, end));
+  const rows = JSON.parse(meta.statsJson);
+  const n = v => (v === undefined || v === '' ? null : Number(v));
+  const champ = k => (names.champ && names.champ[k]) || k;
+  const POS = { TOP: '탑', JUNGLE: '정글', MIDDLE: '미드', BOTTOM: '원딜', UTILITY: '서폿' };
+  const EXTRA = [['TOTAL_DAMAGE_TAKEN', '받은 피해'], ['TOTAL_DAMAGE_SELF_MITIGATED', '경감한 피해'], ['TOTAL_HEAL_ON_TEAMMATES', '아군 회복'], ['TOTAL_DAMAGE_SHIELDED_ON_TEAMMATES', '아군 보호막'],
+    ['TOTAL_DAMAGE_DEALT_TO_BUILDINGS', '건물 피해'], ['TOTAL_DAMAGE_DEALT_TO_OBJECTIVES', '오브젝트 피해'], ['VISION_SCORE', '시야 점수'], ['WARD_PLACED', '와드 설치'], ['WARD_KILLED', '와드 제거'],
+    ['VISION_WARDS_BOUGHT_IN_GAME', '제어 와드 구매'], ['TIME_CCING_OTHERS', 'CC 점수'], ['GOLD_SPENT', '사용 골드'], ['TURRET_TAKEDOWNS', '포탑 관여'], ['DRAGON_KILLS', '드래곤'], ['BARON_KILLS', '바론'],
+    ['LARGEST_KILLING_SPREE', '최대 연속 킬'], ['LARGEST_MULTI_KILL', '최대 멀티킬'], ['DOUBLE_KILLS', '더블킬'], ['TRIPLE_KILLS', '트리플킬'], ['QUADRA_KILLS', '쿼드라킬'], ['PENTA_KILLS', '펜타킬'],
+    ['TOTAL_TIME_SPENT_DEAD', '사망 시간(초)']];
+  const players = rows.map(r => {
+    const extra = EXTRA.filter(([k]) => r[k] !== undefined && r[k] !== '').map(([k, label]) => ({ key: label, value: String(r[k]) }));
+    if (POS[r.TEAM_POSITION || r.INDIVIDUAL_POSITION]) extra.unshift({ key: '포지션', value: POS[r.TEAM_POSITION || r.INDIVIDUAL_POSITION] });
+    return {
+      team: r.TEAM === '100' ? 'blue' : r.TEAM === '200' ? 'red' : 'unknown',
+      name: r.RIOT_ID_GAME_NAME ? r.RIOT_ID_GAME_NAME + (r.RIOT_ID_TAG_LINE ? '#' + r.RIOT_ID_TAG_LINE : '') : (r.NAME || '?'),
+      champion: champ(r.SKIN || ''),
+      level: n(r.LEVEL), kills: n(r.CHAMPIONS_KILLED), deaths: n(r.NUM_DEATHS), assists: n(r.ASSISTS),
+      cs: r.MINIONS_KILLED === undefined ? null : Number(r.MINIONS_KILLED || 0) + Number(r.NEUTRAL_MINIONS_KILLED || 0),
+      gold: n(r.GOLD_EARNED), damage: n(r.TOTAL_DAMAGE_DEALT_TO_CHAMPIONS),
+      items: ['ITEM0', 'ITEM1', 'ITEM2', 'ITEM3', 'ITEM4', 'ITEM5', 'ITEM6'].map(k => r[k]).filter(v => v && v !== '0').map(v => (names.item && names.item[v]) || v),
+      extra
+    };
+  });
+  const winRow = rows.find(r => r.WIN === 'Win');
+  const sec = Math.round((meta.gameLength || 0) / 1000);
+  return {
+    winner: !winRow ? 'unknown' : winRow.TEAM === '100' ? 'blue' : 'red',
+    duration: sec ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '',
+    players, teams: [], notes: '리플레이 파일에서 읽음'
+  };
 }
 const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
@@ -804,7 +850,7 @@ function fmtTime(ts) {
 const kda = st => [st.kills, st.deaths, st.assists].map(v => (v == null ? '?' : v)).join('/');
 function uploadPanel(m) {
   const u = state.upload;
-  if (u.loading) return '<div class="shot">결과창을 읽는 중입니다. 10~20초 걸릴 수 있습니다.</div>';
+  if (u.loading) return '<div class="shot">결과를 읽는 중입니다. 결과창 이미지는 10~20초 걸릴 수 있습니다.</div>';
   if (u.err) return `<div class="shot"><span class="down">${esc(u.err)}</span><div class="row"><button class="small" data-shot="${esc(m.id)}">다시 올리기</button><button class="small" id="btnShotCancel">닫기</button></div></div>`;
   const ids = [...m.blue, ...m.red];
   const rows = u.parsed.players.map((p, i) => `<div class="shot-row">
@@ -854,7 +900,7 @@ function renderHistory() {
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
       ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : ''}
-      <div class="row">${delCtl(m)}${!(state.upload && state.upload.mid === m.id) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 추가 (딜량 탭 등)' : '결과창 올리기'}</button>${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}` : ''}</div>
+      <div class="row">${delCtl(m)}${!(state.upload && state.upload.mid === m.id) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 추가 (딜량 탭 등)' : '결과창 올리기'}</button>` : ''}${!(state.upload && state.upload.mid === m.id) ? `<button class="small" data-replay="${esc(m.id)}" ${state.busy ? 'disabled' : ''} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일">리플레이 올리기</button>` : ''}${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}</div>
     </div>`).join('')}${trashHtml()}`;
 }
 
@@ -1082,6 +1128,35 @@ async function shrink(file) {
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.9).split(',')[1];
 }
+// 챔피언·아이템 한국어 이름 (Data Dragon, 기기에 하루 캐시). 실패하면 원문 그대로 쓴다
+async function lolNames() {
+  try { const c = JSON.parse(lsGet('mmr-ddragon') || 'null'); if (c && Date.now() - c.ts < 864e5) return c; } catch (e) {}
+  try {
+    const ver = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0];
+    const base = `https://ddragon.leagueoflegends.com/cdn/${ver}/data/ko_KR/`;
+    const [ch, it] = await Promise.all([fetch(base + 'champion.json').then(r => r.json()), fetch(base + 'item.json').then(r => r.json())]);
+    const out = { ts: Date.now(), champ: {}, item: {} };
+    Object.values(ch.data).forEach(c => { out.champ[c.id] = c.name; });
+    Object.entries(it.data).forEach(([id, x]) => { out.item[id] = x.name; });
+    lsSet('mmr-ddragon', JSON.stringify(out));
+    return out;
+  } catch (e) { return {}; }
+}
+$('replayInput').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  const u = state.upload; if (!file || !u) return;
+  const m = repo.matches.find(x => x.id === u.mid); if (!m) return;
+  state.upload = { mid: u.mid, loading: true }; renderHistory();
+  try {
+    // 결과 데이터는 파일 끝에 있으므로 마지막 2MB만 읽는다
+    const tail = await file.slice(Math.max(0, file.size - 2 * 1024 * 1024)).arrayBuffer();
+    const parsed = parseReplayText(new TextDecoder('utf-8').decode(tail), await lolNames());
+    state.upload = { mid: u.mid, parsed, map: autoMap(m, parsed.players) };
+  } catch (err) {
+    state.upload = { mid: u.mid, err: err.message || '리플레이를 읽지 못했습니다.' };
+  }
+  renderHistory();
+});
 $('shotInput').addEventListener('change', async e => {
   const file = e.target.files[0]; e.target.value = '';
   const u = state.upload; if (!file || !u) return;
@@ -1110,6 +1185,8 @@ $('history').addEventListener('change', e => {
 $('history').addEventListener('click', async e => {
   const shot = e.target.closest('[data-shot]');
   if (shot) { state.upload = { mid: shot.dataset.shot }; $('shotInput').click(); return; }
+  const rp = e.target.closest('[data-replay]');
+  if (rp) { state.upload = { mid: rp.dataset.replay }; $('replayInput').click(); return; }
   if (e.target.id === 'btnShotCancel') { state.upload = null; renderHistory(); return; }
   if (e.target.id === 'btnShotSave') {
     const u = state.upload, m = repo.matches.find(x => x.id === u.mid); if (!m) return;
