@@ -237,6 +237,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <label class="field"><span>MMR</span><input id="editMmr" type="number" inputmode="numeric" step="1" min="0" max="4000"></label>
       </div>
       <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
+      <label class="field"><span>롤 닉네임 (여러 계정이면 쉼표로 구분, #태그는 빼도 됨)</span><input id="editRiot" maxlength="200" autocomplete="off" placeholder="예: Hide on bush, 부캐닉"></label>
       <div class="row between">
         <div class="row">
           <button class="primary" id="btnEditSave">저장</button>
@@ -807,7 +808,7 @@ function renderPlayers() {
   const list = [...repo.players].sort(byName);
   $('playerCount').textContent = list.length ? `${list.length}명` : '';
   $('playerList').innerHTML = list.length
-    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${esc(p.name)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
+    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${esc(p.name)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판${(p.riotNames || []).length ? '' : ' · <span class="muted" title="결과창 자동 연결용 롤 닉네임이 없습니다">닉네임 없음</span>'}</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
     : '<div class="empty">위에서 이름과 티어를 넣어 첫 선수를 추가하세요.</div>';
   const map = pmap();
   if (state.editId && !map[state.editId]) closeEdit();
@@ -1106,7 +1107,7 @@ $('playerList').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
-  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []);
+  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', ');
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
 });
@@ -1116,7 +1117,7 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
-  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('btnEditDelete').addEventListener('click', async () => {
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
