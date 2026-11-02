@@ -968,7 +968,8 @@ $('result').addEventListener('click', async e => {
 // 결과창 업로드: 이미지 축소 → Worker → 선수 연결 → 경기에 저장
 function autoMap(m, players) {
   const map = pmap(), ids = [...m.blue, ...m.red], used = new Set(), out = {};
-  const norm = x => String(x || '').toLowerCase().replace(/\s+/g, '').replace(/#.*/, '');
+  // 대소문자·공백·#태그 무시, 결과창 글꼴에서 헷갈리는 글자(l I 1 | i, O 0 o)는 같은 글자로 본다
+  const norm = x => String(x || '').replace(/#.*/, '').replace(/\s+/g, '').toLowerCase().replace(/[il1|]/g, 'l').replace(/[o0]/g, 'o');
   players.forEach((p, i) => {
     const n = norm(p.name);
     const hit = ids.find(id => !used.has(id) && ((map[id] && (map[id].riotNames || []).some(r => norm(r) === n)) || norm((m.names || {})[id]) === n))
