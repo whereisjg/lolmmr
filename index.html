@@ -1023,7 +1023,9 @@ function trashHtml() {
 function renderHistory() {
   const el = $('history');
   if (!repo.matches.length) { el.innerHTML = `<h2>경기 기록</h2><div class="empty">아직 기록된 경기가 없습니다. 팀 짜기에서 승리 팀을 누르면 여기에 쌓입니다.</div>${trashHtml()}`; return; }
-  const side = (m, ids, cls, label) => `<ul><li><span class="label ${cls}">${label}</span></li>${ids.map(id => {
+  // 탑·정글·미드·원딜·서폿 순 (포지션 없는 이전 기록은 원래 순서)
+  const byRole = (m, ids) => [...ids].sort((x, y) => { const r = id => { const k = POS_KEYS.indexOf((m.roles || {})[id]); return k < 0 ? 9 : k; }; return r(x) - r(y); });
+  const side = (m, ids, cls, label) => `<ul><li><span class="label ${cls}">${label}</span></li>${byRole(m, ids).map(id => {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
