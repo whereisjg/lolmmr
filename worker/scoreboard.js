@@ -1,7 +1,7 @@
 // Cloudflare Worker: 롤 게임 결과창 이미지 → Gemini로 읽어 JSON 반환
 // 배포: Cloudflare 대시보드 > Workers > Create > 이 파일 내용 붙여넣기 > Deploy
 // 설정: Settings > Variables and Secrets 에 GEMINI_API_KEY(Secret) 추가
-//       (선택) GEMINI_MODEL 로 모델 변경. 기본 gemini-2.5-flash
+//       (선택) GEMINI_MODEL 로 모델 변경. 기본 gemini-3.8-flash
 // 요청: POST { image: "<base64, data: 접두어 없이>", mime: "image/jpeg" }
 // 응답: { result: {...} } 또는 { error: "..." }
 
@@ -80,7 +80,7 @@ export default {
     const mime = ['image/jpeg', 'image/png', 'image/webp'].includes(body.mime) ? body.mime : 'image/jpeg';
     if (!image || image.length * 0.75 > MAX_IMAGE_BYTES) return json({ error: '이미지가 없거나 너무 큽니다.' }, 400, origin);
 
-    const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const model = env.GEMINI_MODEL || 'gemini-3.8-flash';
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },

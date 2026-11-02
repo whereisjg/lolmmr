@@ -29,7 +29,7 @@
 - `localStorage` 모드: 키 `mmr-balancer-v1`에 `{players:{}, matches:{}}`. 참가자 선택은 `mmr-sel`
 
 ## 결과창 인식
-- `worker/scoreboard.js`: Cloudflare Worker. POST `{image(base64), mime}` → Gemini `generateContent`(responseSchema, 기본 `gemini-2.5-flash`, env `GEMINI_MODEL`) → `{result}`. 키는 Worker Secret `GEMINI_API_KEY`. Origin은 `ALLOWED_ORIGINS`만 허용
+- `worker/scoreboard.js`: Cloudflare Worker. POST `{image(base64), mime}` → Gemini `generateContent`(responseSchema, 기본 `gemini-3.8-flash`, env `GEMINI_MODEL`) → `{result}`. 키는 Worker Secret `GEMINI_API_KEY`. Origin은 `ALLOWED_ORIGINS`만 허용
 - 사이트: `VISION_URL`이 있으면 기록 카드에 결과창 올리기 버튼. 이미지는 긴 변 2000px JPEG로 줄여 보냄 → `autoMap`(riotNames, 이름 일치/포함. 대소문자·공백·#태그 무시, l/I/1/|/i와 O/0/o는 같은 글자로 비교)으로 선수 연결 → 사용자가 확인 후 `repo.updateMatch`로 저장, 연결한 닉네임은 `riotNames`에 추가
 
 ## 알고리즘
