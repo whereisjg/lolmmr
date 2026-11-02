@@ -31,7 +31,7 @@
 ## 결과창 인식
 - `worker/scoreboard.js`: Cloudflare Worker. POST `{image(base64), mime}` → Gemini `generateContent`(responseSchema, 기본 `gemini-3.8-flash`, env `GEMINI_MODEL`) → `{result}`. 키는 Worker Secret `GEMINI_API_KEY`. Origin은 `ALLOWED_ORIGINS`만 허용
 - `worker/apps-script.gs`: 같은 기능의 Google Apps Script 웹 앱. **현재 사용 중**(`VISION_URL`). Cloudflare에서 Gemini가 `User location is not supported`를 낼 때 사용(Google 서버라 지역 제한 없음). 키는 스크립트 속성 `GEMINI_API_KEY`. Origin 검사 불가. PROMPT/SCHEMA는 scoreboard.js와 같게 유지
-- 사이트: 요청은 `text/plain`(preflight 없음)으로 보내 두 중계 모두 호환. `VISION_URL`이 있으면 기록 카드에 결과창 올리기 버튼. 이미지는 긴 변 2000px JPEG로 줄여 보냄 → `autoMap`(riotNames, 이름 일치/포함. 대소문자·공백·#태그 무시, l/I/1/|/i와 O/0/o는 같은 글자로 비교)으로 선수 연결 → 사용자가 확인 후 `repo.updateMatch`로 저장, 연결한 닉네임은 `riotNames`에 추가
+- 사이트: 요청은 `text/plain`(preflight 없음)으로 보내 두 중계 모두 호환. `VISION_URL`이 있으면 기록 카드에 결과창 올리기 버튼. 이미지는 긴 변 2000px JPEG로 줄여 보냄 → `autoMap`(riotNames, 이름 일치/포함. 대소문자·공백·#태그 무시, l/I/1/|/i와 O/0/o는 같은 글자로 비교)으로 선수 연결 → 사용자가 확인 후 `repo.updateMatch`로 저장(이미 stats가 있으면 `mergeStat`으로 합침: 새로 읽힌 값만 덮고 null·빈 값은 기존 유지, extra는 key 기준 합침. 점수판 탭 + 통계 탭처럼 여러 장 올리기용), 연결한 닉네임은 `riotNames`에 추가
 
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600

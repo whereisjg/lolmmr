@@ -422,6 +422,23 @@ function aggregateStats(matches) {
   }
   return { per, champs };
 }
+// 같은 경기에 여러 장(점수판 탭 + 통계 탭 등)을 올리면 합친다: 새로 읽힌 값이 있으면 덮고, 없으면(null/빈 값) 기존 값 유지
+function mergeStat(old, neu) {
+  if (!old) return neu;
+  const out = { ...old };
+  for (const [k, v] of Object.entries(neu)) {
+    if (k === 'extra') continue;
+    if (v == null || v === '' || (Array.isArray(v) && !v.length)) continue;
+    out[k] = v;
+  }
+  const extra = [...(old.extra || [])];
+  for (const e of neu.extra || []) {
+    const i = extra.findIndex(x => x.key === e.key);
+    if (i >= 0) extra[i] = e; else extra.push(e);
+  }
+  out.extra = extra;
+  return out;
+}
 const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
@@ -797,7 +814,7 @@ function uploadPanel(m) {
         ${ids.map(id => `<option value="${esc(id)}" ${u.map[i] === id ? 'selected' : ''}>${esc((m.names || {})[id] || id)}</option>`).join('')}
       </select></div>`).join('');
   return `<div class="shot">
-    <span class="muted">인식된 플레이어를 우리 선수와 연결하세요. 한 번 연결한 닉네임은 다음부터 자동으로 맞춰집니다.</span>
+    <span class="muted">인식된 플레이어를 우리 선수와 연결하세요. 한 번 연결한 닉네임은 다음부터 자동으로 맞춰집니다.${m.stats ? ' 이미 저장된 결과창에 합쳐지며, 이번 이미지에 없는 값은 그대로 둡니다.' : ''}</span>
     ${rows}
     ${u.parsed.notes ? `<span class="muted">메모: ${esc(u.parsed.notes)}</span>` : ''}
     <div class="row"><button class="small primary" id="btnShotSave" ${state.busy ? 'disabled' : ''}>저장</button><button class="small" id="btnShotCancel">취소</button></div>
@@ -837,7 +854,7 @@ function renderHistory() {
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
       ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : ''}
-      <div class="row">${delCtl(m)}${!(state.upload && state.upload.mid === m.id) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 다시 올리기' : '결과창 올리기'}</button>${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}` : ''}</div>
+      <div class="row">${delCtl(m)}${!(state.upload && state.upload.mid === m.id) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 추가 (딜량 탭 등)' : '결과창 올리기'}</button>${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}` : ''}</div>
     </div>`).join('')}${trashHtml()}`;
 }
 
@@ -1099,9 +1116,14 @@ $('history').addEventListener('click', async e => {
     const stats = {}, pm = pmap();
     Object.entries(u.map).forEach(([i, pid]) => { stats[pid] = u.parsed.players[i]; });
     if (!Object.keys(stats).length) { toast('연결된 선수가 없습니다.'); return; }
-    const { duration = '', winner = 'unknown', teams = [], notes = '' } = u.parsed;
+    // 기존 결과창과 합치기 (연결 안 된 선수의 기존 값도 유지)
+    const merged = { ...(m.stats || {}) };
+    for (const [pid, st] of Object.entries(stats)) merged[pid] = mergeStat(merged[pid], st);
+    const old = m.statsMeta || {};
+    const duration = u.parsed.duration || old.duration || '', winner = u.parsed.winner && u.parsed.winner !== 'unknown' ? u.parsed.winner : (old.winner || 'unknown');
+    const teams = (u.parsed.teams || []).length ? u.parsed.teams : (old.teams || []), notes = u.parsed.notes || old.notes || '';
     const ok = await run(async () => {
-      await repo.updateMatch(m.id, { stats, statsMeta: { duration, winner, teams, notes, ts: Date.now() } });
+      await repo.updateMatch(m.id, { stats: merged, statsMeta: { duration, winner, teams, notes, shots: (old.shots || (m.stats ? 1 : 0)) + 1, ts: Date.now() } });
       for (const [pid, st] of Object.entries(stats)) {
         const p = pm[pid], names = (p && p.riotNames) || [];
         if (p && st.name && !names.includes(st.name)) await repo.updatePlayer(pid, { riotNames: [...names, st.name] });
