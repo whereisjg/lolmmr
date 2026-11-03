@@ -1151,8 +1151,12 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 
-function makeSplit() {
+// ids: 다시 짜기는 지금 팀의 선수로(기기마다 참가자 선택이 달라도 동작)
+function makeSplit(ids) {
   const map = pmap();
+  if (ids) { state.selected = new Set(ids.filter(id => map[id])); saveSel(); }
+  const n = state.selected.size;
+  if (n < 2 || n > 10 || n % 2) { toast('참가자를 2~10명, 짝수로 골라 주세요.'); renderTeams(); return; }
   const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [] }));
   const p = pickSplit(players, repo.series ? repo.series.key : state.lastKey, Math.random, state.cons);
   if (!p) { toast('같은 팀/다른 팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
@@ -1267,11 +1271,11 @@ $('btnClearSel').addEventListener('click', async () => {
   if (repo.series) await run(() => repo.setSeries(null));
   renderTeams(); toast('팀 짜기를 초기화했습니다.');
 });
-$('btnSplit').addEventListener('click', makeSplit);
+$('btnSplit').addEventListener('click', () => makeSplit());
 $('btnManual').addEventListener('click', manualSplit);
 
 $('result').addEventListener('click', async e => {
-  if (e.target.id === 'btnReroll') return makeSplit();
+  if (e.target.id === 'btnReroll') return makeSplit([...repo.series.blue, ...repo.series.red]);
   if (e.target.id === 'btnReplaySeries') { $('replaySeriesInput').click(); return; }
   if (e.target.id === 'btnReplayCancel') { state.replayPlan = null; renderTeams(); return; }
   if (e.target.id === 'btnReplayRecord') return recordReplayPlan();
