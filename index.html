@@ -290,8 +290,8 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
       </ol>
 
-      <h3>결과 기록 (3판 2선)</h3>
-      <p>한 번 짠 팀으로 한쪽이 2승할 때까지 진행합니다. 기록은 <b>한 사람만</b> 해 주세요.</p>
+      <h3>결과 기록 (3판 2선 / 5판 3선)</h3>
+      <p>팀을 짜면 위쪽 <b>3판 2선 ⇄</b> 버튼으로 5판 3선과 바꿀 수 있습니다(1세트 전에만. 이 기기에서 고른 방식이 다음 시리즈 기본값). 한 번 짠 팀으로 한쪽이 2승(5판 3선은 3승)할 때까지 진행합니다. 기록은 <b>한 사람만</b> 해 주세요.</p>
       <ol>
         <li><b>리플레이 업로드 (PC, 추천):</b> 게임이 다 끝난 뒤 팀 카드 아래 <b>리플레이로 기록</b>을 누르고 그날 리플레이를 한꺼번에 고릅니다. 미리보기를 확인하고 <b>기록하기</b>만 누르면 끝입니다. 세트 순서, 승리 팀, MMR, 경기 통계까지 자동으로 들어가서 <b>따로 조작할 필요가 없습니다</b>.
           <ul>
@@ -318,7 +318,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li><b>배치:</b> 처음 10판은 1.5배로 크게 움직여 빨리 자리를 찾습니다.</li>
         <li><b>연승가속 / 연패가속:</b> 세트 n연승 중 또 이기면 ×(1 + 0.1n), n연패 중 또 지면 같은 배율로 더 깎입니다. 2연속부터 적용합니다.</li>
         <li><b>용맹의 방패:</b> 선호 포지션이 아닌 곳에 배정돼 지면 감점이 절반입니다. 팀 카드에 <b>방패</b>로 표시됩니다.</li>
-        <li><b>순위</b> 탭의 전적·연속·승률은 시리즈(3판 2선) 기준, 세트 전적은 따로 보여 줍니다.</li>
+        <li><b>순위</b> 탭의 전적·연속·승률은 시리즈 기준, 세트 전적은 따로 보여 줍니다.</li>
       </ul>
 
       <h3>실수했을 때</h3>
@@ -393,7 +393,11 @@ const POSITIONS = [['top', '탑'], ['jungle', '정글'], ['mid', '미드'], ['ad
 const POS_KEYS = POSITIONS.map(p => p[0]);
 const POS_LABEL = Object.fromEntries(POSITIONS);
 const POS_SLACK = 30; // 포지션을 맞추려고 허용하는 평균 MMR 차이 여유
-const SERIES_WINS = 2; // 3판 2선
+const SERIES_WINS = 2; // 기본 3판 2선. 시리즈마다 wins(2|3)로 고름
+const winsOf = s => (s && s.wins === 3 ? 3 : SERIES_WINS);
+// 새 시리즈 기본값: 이 기기에서 마지막으로 고른 방식
+const nextWins = () => { try { return localStorage.getItem('mmr-bo') === '3' ? 3 : SERIES_WINS; } catch (e) { return SERIES_WINS; } };
+const boLabel = w => (w === 3 ? '5판 3선' : '3판 2선');
 
 function expected(ra, rb) { return 1 / (1 + Math.pow(10, (rb - ra) / 400)); }
 function kFactor(games) { return games < PLACEMENT_GAMES ? 48 : 32; }
@@ -740,10 +744,10 @@ const repo = {
     const played = s.score.blue + s.score.red, game = played + 1, ts = Date.now();
     const ids = [...s.blue, ...s.red], won = id => (s.blue.includes(id) ? 'blue' : 'red') === winner;
     const score = { ...s.score, [winner]: s.score[winner] + 1 };
-    const finished = score[winner] >= SERIES_WINS;
+    const finished = score[winner] >= winsOf(s);
     const next = { ...s, score, done: finished, winner: finished ? winner : null }; // 끝나도 결과를 화면에 남긴다
     const mid = s.sid + '-g' + game;
-    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game, ...extra };
+    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game, wins: winsOf(s), ...extra };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + mid);
       await this.db.runTransaction(async t => {
@@ -782,7 +786,7 @@ const repo = {
       if (c && c.sid === m.series && (isLatest || !c.done)) return { ...c, done: false, winner: null, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
       if (!isLatest) return c;
       if (c && !c.done && c.score.blue + c.score.red > 0) return c; // 다른 시리즈가 진행 중이면 그대로
-      return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore };
+      return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore, wins: m.wins || SERIES_WINS };
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
     // 시리즈를 끝낸 세트에만 prevStreak가 있다
@@ -852,7 +856,7 @@ const repo = {
 function seriesDoc(x, ts) {
   if (!x) return { active: false, ts };
   const { sid, blue, red, roles, key, score, done, winner } = x;
-  return { sid, blue, red, roles, key: key || '', score, done: !!done, winner: winner || null, active: true, ts };
+  return { sid, blue, red, roles, key: key || '', score, wins: winsOf(x), done: !!done, winner: winner || null, active: true, ts };
 }
 
 // ---------- 화면 상태
@@ -957,7 +961,7 @@ function renderTeams() {
   const dis = state.busy ? 'disabled' : '';
   res.innerHTML = `
     <div class="series">
-      <span class="label">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : `3판 2선 · ${played + 1}세트`}</span>
+      <span class="label">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : played ? `${boLabel(winsOf(s))} · ${played + 1}세트` : `<button class="small" id="btnBo" ${dis} title="1세트 전에만 바꿀 수 있습니다">${boLabel(winsOf(s))} ⇄</button> · 1세트`}</span>
       <span class="score num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></span>
     </div>
     <div class="odds">
@@ -992,7 +996,7 @@ function renderRanking() {
   if (!list.length) { el.innerHTML = '<h2>순위</h2><div class="empty">아직 경기를 뛴 선수가 없습니다. 첫 세트를 기록하면 순위가 표시됩니다.</div>'; return; }
   el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만${hidden ? ` · 기록 없는 ${hidden}명 숨김` : ''}</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="3판 2선 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
+      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="시리즈 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
         <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}</td>
@@ -1154,7 +1158,7 @@ function makeSplit() {
   if (!p) { toast('같은 팀/다른 팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
   state.lastKey = p.key;
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
-  run(() => repo.setSeries({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 } }));
+  run(() => repo.setSeries({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() }));
 }
 function rolesFor(blue, red, map) {
   const prefs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].pos || []]));
@@ -1167,7 +1171,7 @@ function manualSplit() {
   const map = pmap(), ids = [...state.selected].sort((a, b) => map[b].mmr - map[a].mmr);
   const blue = ids.filter((_, i) => i % 4 === 0 || i % 4 === 3), red = ids.filter((_, i) => i % 4 === 1 || i % 4 === 2);
   state.swapId = null;
-  run(() => repo.setSeries({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 } }));
+  run(() => repo.setSeries({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() }));
 }
 function swapPick(id) {
   const s = repo.series; if (!s) return;
@@ -1272,10 +1276,11 @@ $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReplayCancel') { state.replayPlan = null; renderTeams(); return; }
   if (e.target.id === 'btnReplayRecord') return recordReplayPlan();
   const sw = e.target.closest('[data-swap]'); if (sw) return swapPick(sw.dataset.swap);
+  if (e.target.id === 'btnBo') { const s = repo.series; if (s.score.blue + s.score.red === 0 && !s.done) { const w = winsOf(s) === 3 ? 2 : 3; try { localStorage.setItem('mmr-bo', String(w)); } catch (e) {} run(() => repo.setSeries({ ...s, wins: w })); } return; }
   if (e.target.id === 'btnClose') { run(() => repo.setSeries(null)); return; }
   if (e.target.id === 'btnAgain') {
     const s = repo.series;
-    run(() => repo.setSeries({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 } }));
+    run(() => repo.setSeries({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s) }));
     return;
   }
   if (e.target.id === 'btnEndSeries') { if (await run(() => repo.setSeries(null))) toast('시리즈를 종료했습니다.'); return; }
