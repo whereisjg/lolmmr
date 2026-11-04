@@ -291,7 +291,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 
       <h3>팀 짜기</h3>
       <ol>
-        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
+        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글(@멘션, 성까지 붙인 이름도 됨)을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
@@ -1270,12 +1270,22 @@ function parsePaste(text, players) {
   const key = x => x.replace(/\s+/g, '').toLowerCase();
   const byName = new Map(players.flatMap(p => (p.aliases || []).map(a => [key(a), p.id])));
   players.forEach(p => byName.set(key(p.name), p.id)); // 이름이 AKA보다 우선
-  const words = text.split(/[\s,·/]+/).map(w => w.replace(/^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$/g, '')).filter(Boolean);
+  const names = [...byName.keys()].filter(n => n.length >= 2);
+  // 하나로만 맞을 때만 인정(여럿이면 null)
+  const only = list => { const s = [...new Set(list.map(n => byName.get(n)))]; return s.length === 1 ? s[0] : null; };
+  const raw = text.split(/[\s,·/]+/).filter(Boolean);
+  const hasAt = raw.some(w => w.startsWith('@'));
   const ids = [], unknown = [];
-  for (const w of words) {
-    const id = byName.get(key(w));
+  for (const r of raw) {
+    const w = r.replace(/^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$/g, ''), k = key(w), at = r.startsWith('@');
+    if (!w) continue;
+    let id = byName.get(k);
+    // 성 + 이름(김강래 → 강래)
+    if (!id && /^[가-힣]{3,}$/.test(w)) id = only(names.filter(n => k.length === n.length + 1 && k.endsWith(n)));
+    // @멘션은 카톡 이름 안에 선수 이름이 들어 있으면 인정(@ㄱ나리뷰티끄 → 나리). 가장 긴 이름 우선
+    if (!id && at) { const hit = names.filter(n => k.includes(n)), len = Math.max(0, ...hit.map(n => n.length)); id = only(hit.filter(n => n.length === len)); }
     if (id) { if (!ids.includes(id)) ids.push(id); }
-    else if (/^[가-힣A-Za-z]{2,}$/.test(w) && !/^bo\d$/i.test(w) && !unknown.includes(w)) unknown.push(w);
+    else if ((!hasAt || at) && /^[가-힣A-Za-z]{2,}$/.test(w) && !/^bo\d$/i.test(w) && !unknown.includes(w)) unknown.push(w);
   }
   return { ids, unknown };
 }
