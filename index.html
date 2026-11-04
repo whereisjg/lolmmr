@@ -292,7 +292,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <h3>팀 짜기</h3>
       <ol>
         <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글(@멘션, 성까지 붙인 이름도 됨)을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
-        <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
+        <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다. 선수 편집의 <b>항상 레드팀</b>을 켜면 팀 짜기 때 그 선수는 늘 레드 팀이 됩니다(다시 짜기도 동일).</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
         <li>지각한 사람은 팀 화면 아래에서 고르고 점수(−10/−20/−30)를 고른 뒤 <b>지각</b> 버튼을 두 번 누르면 바로 MMR이 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
@@ -358,6 +358,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
       <label class="field"><span>롤 닉네임 (여러 계정이면 쉼표로 구분, #태그는 빼도 됨)</span><input id="editRiot" maxlength="200" autocomplete="off" placeholder="예: Hide on bush, 부캐닉"></label>
       <label class="field"><span>AKA (카톡 붙여넣기용, 쉼표로 구분)</span><input id="editAlias" maxlength="100" autocomplete="off" placeholder="예: 만두"></label>
+      <label class="field"><span><input type="checkbox" id="editRed"> 항상 레드팀 (팀 짜기 때 레드 쪽에 배정)</span></label>
       <div class="row between">
         <div class="row">
           <button class="primary" id="btnEditSave">저장</button>
@@ -471,12 +472,15 @@ function fitsCons(s, cons, inSel) {
 }
 
 // 조건을 만족하는 조합이 없으면 null
-function pickSplit(players, lastKey, rnd = Math.random, cons = {}) {
+// pinRed: 항상 레드팀인 선수 id 배열. 참가한 선수가 모두 한 팀에 있는 조합만 남기고, 그 팀을 레드로 둔다
+function pickSplit(players, lastKey, rnd = Math.random, cons = {}, pinRed = []) {
   const sorted = [...players].sort((x, y) => (x.id < y.id ? -1 : 1));
   const prefs = Object.fromEntries(players.map(p => [p.id, p.pos || []]));
   const mmrs = Object.fromEntries(players.map(p => [p.id, p.mmr]));
   const sel = new Set(players.map(p => p.id)), inSel = id => sel.has(id);
-  const all = splitAll(sorted).filter(s => fitsCons(s, cons, inSel));
+  const pin = pinRed.filter(inSel);
+  const pinOk = s => !pin.length || pin.every(id => s.a.includes(id)) || pin.every(id => s.b.includes(id));
+  const all = splitAll(sorted).filter(s => fitsCons(s, cons, inSel) && pinOk(s));
   if (!all.length) return null;
   const near = all.filter(s => s.diff <= all[0].diff + POS_SLACK);
   for (const s of near) {
@@ -488,7 +492,7 @@ function pickSplit(players, lastKey, rnd = Math.random, cons = {}) {
   let pool = fit.filter(s => s.diff <= fit[0].diff + 10).slice(0, 12);
   if (pool.length > 1) pool = pool.filter(s => s.key !== lastKey);
   const s = pool[Math.floor(rnd() * pool.length)];
-  const aBlue = rnd() < 0.5;
+  const aBlue = pin.length ? !s.a.includes(pin[0]) : rnd() < 0.5;
   return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key, roles: s.roles, off: s.off };
 }
 
@@ -1174,8 +1178,9 @@ function makeSplit(ids) {
   const n = state.selected.size;
   if (n < 2 || n > 10 || n % 2) { toast('참가자를 2~10명, 짝수로 골라 주세요.'); renderTeams(); return; }
   const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [] }));
-  const p = pickSplit(players, repo.series ? repo.series.key : state.lastKey, Math.random, state.cons);
-  if (!p) { toast('같은 팀/다른 팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
+  const pinRed = [...state.selected].filter(id => map[id].redPin);
+  const p = pickSplit(players, repo.series ? repo.series.key : state.lastKey, Math.random, state.cons, pinRed);
+  if (!p) { toast('같은 팀/다른 팀/레드팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
   state.lastKey = p.key;
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
   run(() => repo.setSeries({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() }));
@@ -1728,7 +1733,7 @@ $('playerList').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
-  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
+  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', '); $('editRed').checked = !!p.redPin;
   renderEditLate(p);
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
@@ -1748,7 +1753,7 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
-  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], redPin: $('editRed').checked, ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('btnEditDelete').addEventListener('click', async () => {
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
