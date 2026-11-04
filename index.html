@@ -249,7 +249,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <span class="count" id="selCount"></span>
       </div>
       <div class="chips" id="chips"></div>
-      <details id="pasteBox">
+      <details id="pasteBox" open>
         <summary class="muted">카톡 글 붙여넣어 선택</summary>
         <form id="pasteForm" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
           <textarea id="pasteText" placeholder="예: 21:30&#10;부연 기범 정표 나리 강래 원빈 현우 성훈 준수 민혁 10/10 완"></textarea>
@@ -1283,7 +1283,7 @@ $('pasteForm').addEventListener('submit', e => {
   if (!r.ids.length) { toast('등록된 선수 이름을 찾지 못했습니다.'); return; }
   if (r.ids.length > 10) { toast(`이름이 ${r.ids.length}명입니다. 한 판은 최대 10명입니다.`); return; }
   state.selected = new Set(r.ids); saveSel();
-  $('pasteText').value = ''; $('pasteBox').open = false; renderTeams();
+  $('pasteText').value = ''; renderTeams();
   toast(`${r.ids.length}명 선택${r.unknown.length ? ` · 선수 목록에 없음: ${r.unknown.join(', ')}` : ''}`);
 });
 // 초기화: 참가자 선택, 같은 팀/다른 팀 조건, 짜인 팀(진행 중 시리즈)을 지운다. 기록된 경기와 MMR은 그대로
