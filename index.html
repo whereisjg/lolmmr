@@ -355,7 +355,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       </div>
       <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
       <label class="field"><span>롤 닉네임 (여러 계정이면 쉼표로 구분, #태그는 빼도 됨)</span><input id="editRiot" maxlength="200" autocomplete="off" placeholder="예: Hide on bush, 부캐닉"></label>
-      <label class="field"><span>별명 (카톡 붙여넣기용, 쉼표로 구분)</span><input id="editAlias" maxlength="100" autocomplete="off" placeholder="예: 만두"></label>
+      <label class="field"><span>AKA (카톡 붙여넣기용, 쉼표로 구분)</span><input id="editAlias" maxlength="100" autocomplete="off" placeholder="예: 만두"></label>
       <div class="row between">
         <div class="row">
           <button class="primary" id="btnEditSave">저장</button>
@@ -1264,11 +1264,11 @@ $('chips').addEventListener('click', e => {
   else state.selected.add(id);
   saveSel(); renderTeams();
 });
-// 카톡 글 붙여넣기: 등록된 선수 이름이나 별명(aliases)과 똑같은 단어만 골라 선택을 바꾼다
+// 카톡 글 붙여넣기: 등록된 선수 이름이나 AKA(aliases)과 똑같은 단어만 골라 선택을 바꾼다
 function parsePaste(text, players) {
   const key = x => x.replace(/\s+/g, '').toLowerCase();
   const byName = new Map(players.flatMap(p => (p.aliases || []).map(a => [key(a), p.id])));
-  players.forEach(p => byName.set(key(p.name), p.id)); // 이름이 별명보다 우선
+  players.forEach(p => byName.set(key(p.name), p.id)); // 이름이 AKA보다 우선
   const words = text.split(/[\s,·/]+/).map(w => w.replace(/^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$/g, '')).filter(Boolean);
   const ids = [], unknown = [];
   for (const w of words) {
