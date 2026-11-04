@@ -295,7 +295,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
-        <li>지각한 사람은 팀 화면 아래에서 고르고 <b>지각 −10</b>을 두 번 누르면 바로 MMR이 10 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
+        <li>지각한 사람은 팀 화면 아래에서 고르고 <b>지각 −30</b>을 두 번 누르면 바로 MMR이 30 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
         <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
       </ol>
 
@@ -642,7 +642,7 @@ function byGameId(a, b) {
 }
 // 이스터에그: 펜타킬 1번당 MMR +5
 const PENTA_BONUS = 5;
-const LATE_PENALTY = 10; // 지각 1회당 MMR 차감
+const LATE_PENALTY = 30; // 지각 1회당 MMR 차감
 const lateTag = p => (p.lates ? `<span class="tag coward" data-tip="지각: ${p.lates}회 지각해 MMR −${p.lates * LATE_PENALTY}을 받았습니다.">지각${p.lates > 1 ? ' ' + p.lates : ''}</span>` : '');
 function pentaOf(st) {
   const e = ((st && st.extra) || []).find(x => x.key === '펜타킬');
