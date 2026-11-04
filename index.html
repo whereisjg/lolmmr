@@ -355,6 +355,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       </div>
       <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
       <label class="field"><span>롤 닉네임 (여러 계정이면 쉼표로 구분, #태그는 빼도 됨)</span><input id="editRiot" maxlength="200" autocomplete="off" placeholder="예: Hide on bush, 부캐닉"></label>
+      <label class="field"><span>별명 (카톡 붙여넣기용, 쉼표로 구분)</span><input id="editAlias" maxlength="100" autocomplete="off" placeholder="예: 만두"></label>
       <div class="row between">
         <div class="row">
           <button class="primary" id="btnEditSave">저장</button>
@@ -1263,10 +1264,11 @@ $('chips').addEventListener('click', e => {
   else state.selected.add(id);
   saveSel(); renderTeams();
 });
-// 카톡 글 붙여넣기: 등록된 선수 이름과 똑같은 단어만 골라 선택을 바꾼다
+// 카톡 글 붙여넣기: 등록된 선수 이름이나 별명(aliases)과 똑같은 단어만 골라 선택을 바꾼다
 function parsePaste(text, players) {
   const key = x => x.replace(/\s+/g, '').toLowerCase();
-  const byName = new Map(players.map(p => [key(p.name), p.id]));
+  const byName = new Map(players.flatMap(p => (p.aliases || []).map(a => [key(a), p.id])));
+  players.forEach(p => byName.set(key(p.name), p.id)); // 이름이 별명보다 우선
   const words = text.split(/[\s,·/]+/).map(w => w.replace(/^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$/g, '')).filter(Boolean);
   const ids = [], unknown = [];
   for (const w of words) {
@@ -1675,7 +1677,7 @@ $('playerList').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
-  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', ');
+  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
 });
@@ -1685,7 +1687,7 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
-  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('btnEditDelete').addEventListener('click', async () => {
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
