@@ -295,6 +295,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
+        <li>지각한 사람은 팀 화면 아래에서 고르고 <b>지각 −10</b>을 두 번 누르면 바로 MMR이 10 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
         <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
       </ol>
 
@@ -364,6 +365,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         </div>
         <button class="danger" id="btnEditDelete">삭제</button>
       </div>
+      <div class="row" id="editLate"></div>
     </div>
     <div class="panel">
       <h2>선수 추가</h2>
@@ -640,6 +642,8 @@ function byGameId(a, b) {
 }
 // 이스터에그: 펜타킬 1번당 MMR +5
 const PENTA_BONUS = 5;
+const LATE_PENALTY = 10; // 지각 1회당 MMR 차감
+const lateTag = p => (p.lates ? `<span class="tag coward" data-tip="지각: ${p.lates}회 지각해 MMR −${p.lates * LATE_PENALTY}을 받았습니다.">지각${p.lates > 1 ? ' ' + p.lates : ''}</span>` : '');
 function pentaOf(st) {
   const e = ((st && st.extra) || []).find(x => x.key === '펜타킬');
   return e ? Math.max(0, parseInt(e.value, 10) || 0) : 0;
@@ -993,6 +997,7 @@ function renderTeams() {
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
+    <div class="row"><select id="lateSel" aria-label="지각한 선수">${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}" ${(state.lateId || state.lateSel) === id ? 'selected' : ''}>${esc(map[id].name)}</option>`).join('')}</select><button class="small${state.lateId ? ' danger' : ''}" id="btnLate" ${dis}>${state.lateId ? '한 번 더 누르면 차감' : `지각 −${LATE_PENALTY}`}</button></div>
     <span class="muted">${played ? '같은 팀 선수 둘을 차례로 누르면 포지션이 바뀝니다. 팀은 시리즈가 끝날 때까지 유지되고, MMR은 세트마다 반영됩니다. ' : '선수를 누른 뒤 같은 팀 선수를 누르면 포지션이, 상대 팀 선수를 누르면 팀이 서로 바뀝니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
@@ -1008,7 +1013,7 @@ function renderRanking() {
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="시리즈 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
       <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
         <td class="rank">${i + 1}</td>
-        <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}</td>
+        <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}${lateTag(p)}</td>
         <td class="r mmr">${p.mmr}</td>
         <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패</td>
         <td class="r num muted">${p.wins}-${p.losses}</td>
@@ -1094,7 +1099,7 @@ function renderPlayers() {
   const list = [...repo.players].sort(byName);
   $('playerCount').textContent = list.length ? `${list.length}명` : '';
   $('playerList').innerHTML = list.length
-    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${royalName(p.id, p.name)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판${(p.riotNames || []).length ? '' : ' · <span class="muted" title="결과창 자동 연결용 롤 닉네임이 없습니다">닉네임 없음</span>'}</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
+    ? `<ul class="plist">${list.map(p => `<li><span class="nm">${royalName(p.id, p.name)}${lateTag(p)}</span><span class="num">${posText(p)} · MMR ${p.mmr} · ${p.games}판${(p.riotNames || []).length ? '' : ' · <span class="muted" title="결과창 자동 연결용 롤 닉네임이 없습니다">닉네임 없음</span>'}</span><button class="small" data-edit="${esc(p.id)}">편집</button></li>`).join('')}</ul>`
     : '<div class="empty">위에서 이름과 티어를 넣어 첫 선수를 추가하세요.</div>';
   const map = pmap();
   if (state.editId && !map[state.editId]) closeEdit();
@@ -1340,7 +1345,15 @@ $('btnClearSel').addEventListener('click', async () => {
 $('btnSplit').addEventListener('click', () => makeSplit());
 $('btnManual').addEventListener('click', manualSplit);
 
+$('result').addEventListener('change', e => { if (e.target.id === 'lateSel') { state.lateSel = e.target.value; state.lateId = null; renderTeams(); } });
 $('result').addEventListener('click', async e => {
+  if (e.target.id === 'btnLate') {
+    const id = $('lateSel').value, p = pmap()[id]; if (!p) return;
+    if (state.lateId !== id) { state.lateId = id; renderTeams(); setTimeout(() => { if (state.lateId === id) { state.lateId = null; renderTeams(); } }, 4000); return; }
+    state.lateId = null;
+    if (await run(() => repo.updatePlayer(id, { mmr: p.mmr - LATE_PENALTY, lates: (p.lates || 0) + 1 }))) toast(`${p.name} 지각 −${LATE_PENALTY} (누적 ${(p.lates || 0) + 1}회)`);
+    return;
+  }
   if (e.target.id === 'btnReroll') return makeSplit([...repo.series.blue, ...repo.series.red]);
   if (e.target.id === 'btnReplaySeries') { $('replaySeriesInput').click(); return; }
   if (e.target.id === 'btnReplayCancel') { state.replayPlan = null; renderTeams(); return; }
@@ -1712,8 +1725,17 @@ $('playerList').addEventListener('click', e => {
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
   $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
+  renderEditLate(p);
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
+});
+function renderEditLate(p) {
+  $('editLate').innerHTML = p && p.lates ? `<span class="muted">지각 ${p.lates}회</span><button class="small" id="btnLateUndo">지각 1회 취소 (+${LATE_PENALTY})</button>` : '';
+}
+$('editLate').addEventListener('click', async e => {
+  if (e.target.id !== 'btnLateUndo') return;
+  const p = pmap()[state.editId]; if (!p || !p.lates) return;
+  if (await run(() => repo.updatePlayer(p.id, { mmr: p.mmr + LATE_PENALTY, lates: p.lates - 1 }))) { toast(`${p.name} 지각 1회 취소 (+${LATE_PENALTY})`); renderEditLate(pmap()[p.id]); }
 });
 $('btnEditCancel').addEventListener('click', () => { closeEdit(); renderPlayers(); });
 $('btnEditSave').addEventListener('click', async () => {
