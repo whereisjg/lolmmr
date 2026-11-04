@@ -295,7 +295,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
-        <li>지각한 사람은 팀 화면 아래에서 고르고 <b>지각 −30</b>을 두 번 누르면 바로 MMR이 30 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
+        <li>지각한 사람은 팀 화면 아래에서 고르고 점수(−10/−20/−30)를 고른 뒤 <b>지각</b> 버튼을 두 번 누르면 바로 MMR이 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
         <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
       </ol>
 
@@ -642,8 +642,10 @@ function byGameId(a, b) {
 }
 // 이스터에그: 펜타킬 1번당 MMR +5
 const PENTA_BONUS = 5;
-const LATE_PENALTY = 30; // 지각 1회당 MMR 차감
-const lateTag = p => (p.lates ? `<span class="tag coward" data-tip="지각: ${p.lates}회 지각해 MMR −${p.lates * LATE_PENALTY}을 받았습니다.">지각${p.lates > 1 ? ' ' + p.lates : ''}</span>` : '');
+const LATE_OPTIONS = [10, 20, 30]; // 지각 차감 선택지
+// lateLog: 지각마다 깎은 점수(취소는 마지막 것부터). 예전 기록(lates만 있음)은 30점으로 본다
+const lateLogOf = p => p.lateLog || Array(p.lates || 0).fill(30);
+const lateTag = p => (p.lates ? `<span class="tag coward" data-tip="지각: ${p.lates}회 지각해 MMR −${lateLogOf(p).reduce((a, b) => a + b, 0)}을 받았습니다.">지각${p.lates > 1 ? ' ' + p.lates : ''}</span>` : '');
 function pentaOf(st) {
   const e = ((st && st.extra) || []).find(x => x.key === '펜타킬');
   return e ? Math.max(0, parseInt(e.value, 10) || 0) : 0;
@@ -997,7 +999,7 @@ function renderTeams() {
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
-    <div class="row"><select id="lateSel" aria-label="지각한 선수">${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}" ${(state.lateId || state.lateSel) === id ? 'selected' : ''}>${esc(map[id].name)}</option>`).join('')}</select><button class="small${state.lateId ? ' danger' : ''}" id="btnLate" ${dis}>${state.lateId ? '한 번 더 누르면 차감' : `지각 −${LATE_PENALTY}`}</button></div>
+    <div class="row"><select id="lateSel" aria-label="지각한 선수">${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}" ${(state.lateId || state.lateSel) === id ? 'selected' : ''}>${esc(map[id].name)}</option>`).join('')}</select><select id="lateAmt" aria-label="차감 점수">${LATE_OPTIONS.map(v => `<option value="${v}" ${(state.lateAmt || 10) === v ? 'selected' : ''}>−${v}</option>`).join('')}</select><button class="small${state.lateId ? ' danger' : ''}" id="btnLate" ${dis}>${state.lateId ? '한 번 더 누르면 차감' : `지각 −${state.lateAmt || 10}`}</button></div>
     <span class="muted">${played ? '같은 팀 선수 둘을 차례로 누르면 포지션이 바뀝니다. 팀은 시리즈가 끝날 때까지 유지되고, MMR은 세트마다 반영됩니다. ' : '선수를 누른 뒤 같은 팀 선수를 누르면 포지션이, 상대 팀 선수를 누르면 팀이 서로 바뀝니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
@@ -1345,13 +1347,15 @@ $('btnClearSel').addEventListener('click', async () => {
 $('btnSplit').addEventListener('click', () => makeSplit());
 $('btnManual').addEventListener('click', manualSplit);
 
-$('result').addEventListener('change', e => { if (e.target.id === 'lateSel') { state.lateSel = e.target.value; state.lateId = null; renderTeams(); } });
+$('result').addEventListener('change', e => { if (e.target.id === 'lateSel') { state.lateSel = e.target.value; state.lateId = null; renderTeams(); }
+  if (e.target.id === 'lateAmt') { state.lateAmt = Number(e.target.value); state.lateId = null; renderTeams(); } });
 $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnLate') {
     const id = $('lateSel').value, p = pmap()[id]; if (!p) return;
     if (state.lateId !== id) { state.lateId = id; renderTeams(); setTimeout(() => { if (state.lateId === id) { state.lateId = null; renderTeams(); } }, 4000); return; }
     state.lateId = null;
-    if (await run(() => repo.updatePlayer(id, { mmr: p.mmr - LATE_PENALTY, lates: (p.lates || 0) + 1 }))) toast(`${p.name} 지각 −${LATE_PENALTY} (누적 ${(p.lates || 0) + 1}회)`);
+    const amt = state.lateAmt || 10;
+    if (await run(() => repo.updatePlayer(id, { mmr: p.mmr - amt, lates: (p.lates || 0) + 1, lateLog: [...lateLogOf(p), amt] }))) toast(`${p.name} 지각 −${amt} (누적 ${(p.lates || 0) + 1}회)`);
     return;
   }
   if (e.target.id === 'btnReroll') return makeSplit([...repo.series.blue, ...repo.series.red]);
@@ -1730,12 +1734,13 @@ $('playerList').addEventListener('click', e => {
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
 });
 function renderEditLate(p) {
-  $('editLate').innerHTML = p && p.lates ? `<span class="muted">지각 ${p.lates}회</span><button class="small" id="btnLateUndo">지각 1회 취소 (+${LATE_PENALTY})</button>` : '';
+  $('editLate').innerHTML = p && p.lates ? `<span class="muted">지각 ${p.lates}회</span><button class="small" id="btnLateUndo">지각 1회 취소 (+${lateLogOf(p).slice(-1)[0]})</button>` : '';
 }
 $('editLate').addEventListener('click', async e => {
   if (e.target.id !== 'btnLateUndo') return;
   const p = pmap()[state.editId]; if (!p || !p.lates) return;
-  if (await run(() => repo.updatePlayer(p.id, { mmr: p.mmr + LATE_PENALTY, lates: p.lates - 1 }))) { toast(`${p.name} 지각 1회 취소 (+${LATE_PENALTY})`); renderEditLate(pmap()[p.id]); }
+  const log = lateLogOf(p), amt = log[log.length - 1];
+  if (await run(() => repo.updatePlayer(p.id, { mmr: p.mmr + amt, lates: p.lates - 1, lateLog: log.slice(0, -1) }))) { toast(`${p.name} 지각 1회 취소 (+${amt})`); renderEditLate(pmap()[p.id]); }
 });
 $('btnEditCancel').addEventListener('click', () => { closeEdit(); renderPlayers(); });
 $('btnEditSave').addEventListener('click', async () => {
