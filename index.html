@@ -255,6 +255,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
           <textarea id="pasteText" placeholder="예: 21:30&#10;부연 기범 정표 나리 강래 원빈 현우 성훈 준수 민혁 10/10 완"></textarea>
           <div class="row"><button type="submit" class="small">이 이름으로 선택</button></div>
         </form>
+        <div id="pasteMap"></div>
       </details>
       <div class="cons" id="cons"></div>
       <div class="row">
@@ -290,7 +291,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 
       <h3>팀 짜기</h3>
       <ol>
-        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다.</li>
+        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
@@ -1285,8 +1286,31 @@ $('pasteForm').addEventListener('submit', e => {
   if (!r.ids.length) { toast('등록된 선수 이름을 찾지 못했습니다.'); return; }
   if (r.ids.length > 10) { toast(`이름이 ${r.ids.length}명입니다. 한 판은 최대 10명입니다.`); return; }
   state.selected = new Set(r.ids); saveSel();
+  state.pasteUnknown = r.unknown; renderPasteMap();
   $('pasteText').value = ''; renderTeams();
   toast(`${r.ids.length}명 선택${r.unknown.length ? ` · 선수 목록에 없음: ${r.unknown.join(', ')}` : ''}`);
+});
+// 못 찾은 단어: 누구인지 고르면 그 선수의 AKA에 추가하고 선택에 넣는다
+function renderPasteMap() {
+  const box = $('pasteMap'), words = state.pasteUnknown || [];
+  if (!words.length) { box.innerHTML = ''; return; }
+  const free = [...repo.players].sort(byName).filter(p => !state.selected.has(p.id));
+  box.innerHTML = `<div class="shot"><span class="muted"><b>찾지 못한 이름</b> · 누구인지 고르면 선택되고, 다음부터 자동으로 인식됩니다(AKA에 추가). 이름이 아니면 그냥 두세요.</span>
+    ${words.map((w, k) => `<div class="shot-row"><span class="shot-who"><b>${esc(w)}</b></span><select data-pword="${k}" aria-label="${esc(w)} 선수 선택" ${state.busy ? 'disabled' : ''}><option value="">선택 안 함</option>${free.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div>`).join('')}
+    <div class="row"><button class="small" id="btnPasteMapClose">닫기</button></div></div>`;
+}
+$('pasteMap').addEventListener('click', e => { if (e.target.id === 'btnPasteMapClose') { state.pasteUnknown = []; renderPasteMap(); } });
+$('pasteMap').addEventListener('change', async e => {
+  const sel = e.target.closest('[data-pword]'); if (!sel || !sel.value) return;
+  const w = state.pasteUnknown[Number(sel.dataset.pword)], p = pmap()[sel.value];
+  if (!w || !p) return;
+  if (state.selected.size >= 10) { toast('한 판은 최대 10명입니다.'); sel.value = ''; return; }
+  const aliases = [...new Set([...(p.aliases || []), w])];
+  if (!(await run(() => repo.updatePlayer(p.id, { aliases })))) return;
+  if (!inSeries()) { state.selected.add(p.id); saveSel(); }
+  state.pasteUnknown = state.pasteUnknown.filter(x => x !== w);
+  renderPasteMap(); renderTeams();
+  toast(`${w} → ${p.name} (AKA 추가, ${state.selected.size}명 선택)`);
 });
 // 초기화: 참가자 선택, 같은 팀/다른 팀 조건, 짜인 팀(진행 중 시리즈)을 지운다. 기록된 경기와 MMR은 그대로
 let resetTimer = null;
