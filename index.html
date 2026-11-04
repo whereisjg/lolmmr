@@ -252,7 +252,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <details id="pasteBox">
         <summary class="muted">카톡 글 붙여넣어 선택</summary>
         <form id="pasteForm" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-          <textarea id="pasteText" placeholder="예: 21:30 Bo5&#10;부연 기범 정표 나리 강래 원빈 현우 성훈 준수 민혁 10/10 완"></textarea>
+          <textarea id="pasteText" placeholder="예: 21:30&#10;부연 기범 정표 나리 강래 원빈 현우 성훈 준수 민혁 10/10 완"></textarea>
           <div class="row"><button type="submit" class="small">이 이름으로 선택</button></div>
         </form>
       </details>
@@ -290,7 +290,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 
       <h3>팀 짜기</h3>
       <ol>
-        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다(Bo5가 있으면 5판 3선).</li>
+        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다.</li>
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
@@ -1263,7 +1263,7 @@ $('chips').addEventListener('click', e => {
   else state.selected.add(id);
   saveSel(); renderTeams();
 });
-// 카톡 글 붙여넣기: 등록된 선수 이름과 똑같은 단어만 골라 선택을 바꾼다. Bo5/5판이면 5판 3선, Bo3/3판이면 3판 2선을 기본값으로
+// 카톡 글 붙여넣기: 등록된 선수 이름과 똑같은 단어만 골라 선택을 바꾼다
 function parsePaste(text, players) {
   const key = x => x.replace(/\s+/g, '').toLowerCase();
   const byName = new Map(players.map(p => [key(p.name), p.id]));
@@ -1274,8 +1274,7 @@ function parsePaste(text, players) {
     if (id) { if (!ids.includes(id)) ids.push(id); }
     else if (/^[가-힣A-Za-z]{2,}$/.test(w) && !/^bo\d$/i.test(w) && !unknown.includes(w)) unknown.push(w);
   }
-  const wins = /bo\s*5|5판/i.test(text) ? 3 : /bo\s*3|3판/i.test(text) ? 2 : null;
-  return { ids, unknown, wins };
+  return { ids, unknown };
 }
 $('pasteForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -1284,9 +1283,8 @@ $('pasteForm').addEventListener('submit', e => {
   if (!r.ids.length) { toast('등록된 선수 이름을 찾지 못했습니다.'); return; }
   if (r.ids.length > 10) { toast(`이름이 ${r.ids.length}명입니다. 한 판은 최대 10명입니다.`); return; }
   state.selected = new Set(r.ids); saveSel();
-  if (r.wins) lsSet('mmr-bo', String(r.wins));
   $('pasteText').value = ''; $('pasteBox').open = false; renderTeams();
-  toast(`${r.ids.length}명 선택${r.wins ? ` · ${boLabel(r.wins)}` : ''}${r.unknown.length ? ` · 선수 목록에 없음: ${r.unknown.join(', ')}` : ''}`);
+  toast(`${r.ids.length}명 선택${r.unknown.length ? ` · 선수 목록에 없음: ${r.unknown.join(', ')}` : ''}`);
 });
 // 초기화: 참가자 선택, 같은 팀/다른 팀 조건, 짜인 팀(진행 중 시리즈)을 지운다. 기록된 경기와 MMR은 그대로
 let resetTimer = null;
