@@ -295,6 +295,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
         <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 서로 자리를 그대로 맞바꿔 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
+        <li>중간에 사람이 바뀌면 승리 버튼 아래 <b>선수 교체</b>로 나가는 선수와 들어오는 선수를 고릅니다. 시리즈 점수는 그대로이고, 들어온 선수가 같은 팀·같은 포지션을 이어받아 다음 세트부터 MMR이 반영됩니다.</li>
         <li>지각한 사람은 팀 화면 아래에서 고르고 점수(−10/−20/−30)를 고른 뒤 <b>지각</b> 버튼을 두 번 누르면 바로 MMR이 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
         <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
       </ol>
@@ -1000,6 +1001,7 @@ function renderTeams() {
       <button class="red" data-win="red" ${dis}>레드 승리</button>
     </div>
     <div class="row"><select id="lateSel" aria-label="지각한 선수">${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}" ${(state.lateId || state.lateSel) === id ? 'selected' : ''}>${esc(map[id].name)}</option>`).join('')}</select><select id="lateAmt" aria-label="차감 점수">${LATE_OPTIONS.map(v => `<option value="${v}" ${(state.lateAmt || 10) === v ? 'selected' : ''}>−${v}</option>`).join('')}</select><button class="small${state.lateId ? ' danger' : ''}" id="btnLate" ${dis}>${state.lateId ? '한 번 더 누르면 차감' : `지각 −${state.lateAmt || 10}`}</button></div>
+    <div class="row"><select id="subOut" aria-label="나가는 선수">${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}">${esc(map[id].name)}</option>`).join('')}</select><select id="subIn" aria-label="들어오는 선수">${Object.values(map).filter(p => !s.blue.includes(p.id) && !s.red.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select><button class="small" id="btnSub" ${dis}>선수 교체</button></div>
     <span class="muted">${played ? '같은 팀 선수 둘을 차례로 누르면 포지션이 바뀝니다. 팀은 시리즈가 끝날 때까지 유지되고, MMR은 세트마다 반영됩니다. ' : '선수를 누른 뒤 같은 팀 선수를 누르면 포지션이, 상대 팀 선수를 누르면 팀이 서로 바뀝니다. '}결과는 한 명만 기록하세요.</span>`}`;
 }
 
@@ -1210,6 +1212,16 @@ function swapPick(id) {
   const roles = { ...s.roles, [a]: s.roles[id], [id]: s.roles[a] }; // 서로의 자리(포지션)를 그대로 넘겨받는다
   run(() => repo.setSeries({ ...s, blue, red, roles, key: '' }));
 }
+// 선수 교체: 시리즈 점수는 그대로, 들어온 선수가 나간 선수의 팀·포지션을 이어받는다. MMR은 다음 세트부터
+function subPlayer(out, inn) {
+  const s = repo.series, map = pmap();
+  if (!s || s.done || !out || !inn || !map[inn] || s.blue.includes(inn) || s.red.includes(inn)) { toast('교체할 선수를 골라 주세요.'); return; }
+  const sw = x => (x === out ? inn : x);
+  const roles = { ...s.roles, [inn]: (s.roles || {})[out] }; delete roles[out];
+  state.swapId = null; state.replayPlan = null;
+  state.selected.delete(out); state.selected.add(inn); saveSel();
+  run(async () => { await repo.setSeries({ ...s, blue: s.blue.map(sw), red: s.red.map(sw), roles, key: '' }); toast(`${(map[out] || {}).name || ''} → ${map[inn].name} 교체`); });
+}
 const inSeries = () => repo.series && !repo.series.done && repo.series.score.blue + repo.series.score.red > 0;
 
 // 같은 팀 / 다른 팀 조건 (이 기기에 저장, 팀을 짤 때만 쓰임)
@@ -1359,6 +1371,7 @@ $('result').addEventListener('click', async e => {
     if (await run(() => repo.updatePlayer(id, { mmr: p.mmr - amt, lates: (p.lates || 0) + 1, lateLog: [...lateLogOf(p), amt] }))) toast(`${p.name} 지각 −${amt} (누적 ${(p.lates || 0) + 1}회)`);
     return;
   }
+  if (e.target.id === 'btnSub') return subPlayer($('subOut').value, $('subIn').value);
   if (e.target.id === 'btnReroll') return makeSplit([...repo.series.blue, ...repo.series.red]);
   if (e.target.id === 'btnReplaySeries') { $('replaySeriesInput').click(); return; }
   if (e.target.id === 'btnReplayCancel') { state.replayPlan = null; renderTeams(); return; }
