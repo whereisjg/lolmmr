@@ -212,6 +212,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .plist .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .plist .num { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .edit { border: 1px solid var(--gold); background: var(--gold-soft); }
+.mmr-log { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; color: var(--muted); }
 .pos-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .pos-pick button { padding: 6px 12px; font-size: 14px; border-radius: 999px; background: var(--surface-2); }
 .pos-pick button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
@@ -367,6 +368,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <button class="danger" id="btnEditDelete">삭제</button>
       </div>
       <div class="row" id="editLate"></div>
+      <div id="editMmrLog"></div>
     </div>
     <div class="panel">
       <h2>선수 추가</h2>
@@ -1865,10 +1867,15 @@ $('playerList').addEventListener('click', e => {
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
   $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
-  renderEditLate(p);
+  renderEditLate(p); renderMmrLog(p);
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
 });
+// 수동 MMR 조정 기록(선수 편집 저장 시). 최근 5개를 편집 패널에 보여 준다
+function renderMmrLog(p) {
+  const log = (p && p.mmrLog) || [];
+  $('editMmrLog').innerHTML = log.length ? `<span class="muted">수동 조정 기록 ${log.length}회</span><ul class="mmr-log">${log.slice(-5).reverse().map(x => `<li class="num">${new Date(x.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${x.from} → ${x.to} (${x.to - x.from > 0 ? '+' : ''}${x.to - x.from})</li>`).join('')}</ul>` : '';
+}
 function renderEditLate(p) {
   $('editLate').innerHTML = p && p.lates ? `<span class="muted">지각 ${p.lates}회</span><button class="small" id="btnLateUndo">지각 1회 취소 (+${lateLogOf(p).slice(-1)[0]})</button>` : '';
 }
@@ -1885,7 +1892,9 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
-  if (await run(() => repo.updatePlayer(id, { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() }))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+  const patch = { name, mmr, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() };
+  // MMR을 바꿨으면 최신 값 기준으로 이전→이후를 mmrLog에 남긴다
+  if (await run(() => repo.patchPlayer(id, q => ({ ...patch, ...(q.mmr !== mmr ? { mmrLog: [...(q.mmrLog || []), { from: q.mmr, to: mmr, ts: patch.ts }] } : {}) })))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('btnEditDelete').addEventListener('click', async () => {
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
