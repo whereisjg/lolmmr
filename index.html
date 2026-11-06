@@ -659,6 +659,15 @@ function pentaGains(m, pairs) {
   for (const [pid, st] of pairs) { const want = PENTA_BONUS * pentaOf(st); if (want > (had[pid] || 0)) gains[pid] = want - (had[pid] || 0); }
   return gains;
 }
+// 시리즈 문서가 화면에서 본 것과 같은지(시리즈·점수·팀·포지션). 다른 기기가 먼저 바꿨으면 false
+function sameSeries(a, b) {
+  if (!a || !b) return !a && !b;
+  const ids = [...(a.blue || []), ...(a.red || [])];
+  return a.sid === b.sid && !!a.done === !!b.done && winsOf(a) === winsOf(b)
+    && a.score.blue === b.score.blue && a.score.red === b.score.red
+    && (a.blue || []).join() === (b.blue || []).join() && (a.red || []).join() === (b.red || []).join()
+    && ids.every(id => (a.roles || {})[id] === (b.roles || {})[id]);
+}
 const kdaRatio = a => (a.k + a.a) / Math.max(1, a.d);
 // ---------- 저장소
 // Firebase 콘솔 > 프로젝트 설정 > 내 앱(웹)의 firebaseConfig. null이면 아티팩트 db → localStorage 순으로 사용
@@ -756,41 +765,108 @@ const repo = {
     if (this.mode === 'db') return this.db.doc('series/current').set(seriesDoc(x, Date.now()));
     this.local.series = x; this.saveLocal();
   },
+  // 진행 중 시리즈 수정(교환·교체·판수 전환 등). 화면에서 본 시리즈(s)와 지금 문서가 다르면 stale로 멈춘다
+  // mutate(c): 새 시리즈를 돌려준다. 조건이 안 맞으면 throw
+  async updateSeries(s, mutate) {
+    if (this.kind === 'firebase') {
+      const sref = this.db.doc('series/current');
+      await this.db.runTransaction(async t => {
+        const cur = await t.get(sref), c = cur.exists && cur.data().active ? cur.data() : null;
+        if (!sameSeries(c, s)) throw { code: 'stale' };
+        t.set(sref, seriesDoc(mutate(c), Date.now()));
+      });
+    } else {
+      if (!sameSeries(this.series, s)) throw { code: 'stale' };
+      await this.setSeries(mutate(this.series));
+    }
+  },
+  // 선수 한 명을 최신 값 기준으로 고친다(지각 등). fn(p)가 patch를 돌려주고, null이면 쓰지 않는다
+  async patchPlayer(id, fn) {
+    let out = null;
+    if (this.kind === 'firebase') {
+      const ref = this.db.doc('players/' + id);
+      await this.db.runTransaction(async t => {
+        const d = await t.get(ref); if (!d.exists) throw { code: 'missing' };
+        out = fn(d.data()); if (out) t.update(ref, out);
+      });
+      return out;
+    }
+    const p = this.players.find(x => x.id === id); if (!p) throw { code: 'missing' };
+    out = fn(p); if (out) await this.updatePlayer(id, out);
+    return out;
+  },
+  // 펜타 보너스: 경기의 deltas·pentaBonus와 선수 MMR을 한 번에. 이미 준 만큼은 빼고 차액만
+  async applyPenta(mid, pairs) {
+    let gains = {};
+    if (this.kind === 'firebase') {
+      const inc = firebase.firestore.FieldValue.increment, mref = this.db.doc('matches/' + mid);
+      await this.db.runTransaction(async t => {
+        const d = await t.get(mref); if (!d.exists) throw { code: 'stale' };
+        const m = d.data(); gains = pentaGains(m, pairs);
+        if (!Object.keys(gains).length) return;
+        const deltas = { ...(m.deltas || {}) }, bonus = { ...(m.pentaBonus || {}) };
+        for (const [pid, g] of Object.entries(gains)) { deltas[pid] = (deltas[pid] || 0) + g; bonus[pid] = (bonus[pid] || 0) + g; }
+        t.update(mref, { deltas, pentaBonus: bonus });
+        for (const [pid, g] of Object.entries(gains)) if (this.players.some(x => x.id === pid)) t.update(this.db.doc('players/' + pid), { mmr: inc(g) });
+      });
+      return gains;
+    }
+    const m = this.mode === 'local' ? this.local.matches[mid] : this.matches.find(x => x.id === mid);
+    if (!m) throw { code: 'stale' };
+    gains = pentaGains(m, pairs); if (!Object.keys(gains).length) return gains;
+    const deltas = { ...(m.deltas || {}) }, bonus = { ...(m.pentaBonus || {}) };
+    for (const [pid, g] of Object.entries(gains)) { deltas[pid] = (deltas[pid] || 0) + g; bonus[pid] = (bonus[pid] || 0) + g; }
+    await this.updateMatch(mid, { deltas, pentaBonus: bonus });
+    for (const [pid, g] of Object.entries(gains)) await this.patchPlayer(pid, p => ({ mmr: p.mmr + g }));
+    return gains;
+  },
   // 세트 기록. Firebase는 transaction + increment로 중복 기록과 덮어쓰기를 막는다
   // extra: 같은 경기 문서에 함께 쓸 필드(리플레이 통계 등). 한 번에 써서 gameId가 빠진 경기가 생기지 않게 한다
-  async recordGame(s, winner, deltas, pBlue, names, map, extra = {}) {
+  // 증감은 여기서 최신 선수 값으로 계산한다(Firebase는 transaction 안에서). bonus: 증감에 더할 점수(펜타)
+  async recordGame(s, winner, names, map, extra = {}, bonus = {}) {
     const played = s.score.blue + s.score.red, game = played + 1, ts = Date.now();
+    const calc = m => {
+      const r = computeDeltas(s.blue, s.red, winner, m, s.roles);
+      for (const [pid, g] of Object.entries(bonus)) if (pid in r.deltas) r.deltas[pid] += g;
+      return r;
+    };
+    let deltas, pBlue;
     const ids = [...s.blue, ...s.red], won = id => (s.blue.includes(id) ? 'blue' : 'red') === winner;
     const score = { ...s.score, [winner]: s.score[winner] + 1 };
     const finished = score[winner] >= winsOf(s);
     const next = { ...s, score, done: finished, winner: finished ? winner : null }; // 끝나도 결과를 화면에 남긴다
     const mid = s.sid + '-g' + game;
-    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, deltas, winner, pBlue, series: s.sid, game, wins: winsOf(s), ...extra };
+    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, winner, series: s.sid, game, wins: winsOf(s), ...extra };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + mid);
       await this.db.runTransaction(async t => {
         const cur = await t.get(sref), had = await t.get(mref);
         const c = cur.exists ? cur.data() : null;
-        if (had.exists || !c || !c.active || c.done || c.sid !== s.sid || c.score.blue + c.score.red !== played) throw { code: 'stale' };
+        // 다른 기기가 먼저 기록했거나 팀·포지션을 바꿨으면 멈춘다(예전 팀으로 기록되는 것을 막음)
+        if (had.exists || !c || !c.active || c.done || !sameSeries(c, s)) throw { code: 'stale' };
         // 연승/연패는 세트가 아니라 시리즈 결과로 센다. 시리즈가 끝나는 세트에서만 갱신
         const snaps = await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id))));
+        if (snaps.some(d => !d.exists)) throw { code: 'missing' };
+        ({ deltas, pBlue } = calc(Object.fromEntries(ids.map((id, i) => [id, snaps[i].data()]))));
         const prevSet = Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).setStreak || 0]));
         const prev = finished ? Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0])) : null;
-        t.set(mref, { ...match, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
+        t.set(mref, { ...match, deltas, pBlue, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
         ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), setStreak: nextStreak(prevSet[id], won(id)), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: inc(won(id) ? 1 : 0), sLosses: inc(won(id) ? 0 : 1) } : {}), ts }));
         t.set(sref, seriesDoc(next, ts));
       });
     } else {
+      if (!sameSeries(this.series, s)) throw { code: 'stale' };
+      ({ deltas, pBlue } = calc(map));
       const prevSet = Object.fromEntries(ids.map(id => [id, map[id].setStreak || 0]));
       const prev = finished ? Object.fromEntries(ids.map(id => [id, map[id].streak || 0])) : null;
-      await this.setMatch(mid, { ...match, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
+      await this.setMatch(mid, { ...match, deltas, pBlue, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
       for (const id of ids) {
         const p = map[id];
         await this.updatePlayer(id, { mmr: p.mmr + deltas[id], games: p.games + 1, wins: p.wins + (won(id) ? 1 : 0), losses: p.losses + (won(id) ? 0 : 1), setStreak: nextStreak(prevSet[id], won(id)), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: (p.sWins || 0) + (won(id) ? 1 : 0), sLosses: (p.sLosses || 0) + (won(id) ? 0 : 1) } : {}), ts });
       }
       await this.setSeries(next);
     }
-    return { score, finished };
+    return { score, finished, deltas, pBlue };
   },
   // 경기 삭제: MMR·전적을 되돌리고 경기를 휴지통(trash)으로 옮긴다.
   // 가장 최근 경기면 연승과 진행 중 시리즈까지 되돌린다. 이전 경기는 그 경기의 증감만 빼고 연승은 그대로 둔다
@@ -803,7 +879,7 @@ const repo = {
       if (!m.series) return c;
       if (c && c.sid === m.series && (isLatest || !c.done)) return { ...c, done: false, winner: null, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
       if (!isLatest) return c;
-      if (c && !c.done && c.score.blue + c.score.red > 0) return c; // 다른 시리즈가 진행 중이면 그대로
+      if (c && !c.done) return c; // 다른 시리즈가 진행 중이면(0:0으로 막 짠 팀 포함) 그대로
       return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore, wins: m.wins || SERIES_WINS };
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
@@ -906,7 +982,7 @@ function errMsg(e) {
   const c = e && e.code;
   if (c === 'slow') return '저장 반영이 늦어 멈췄습니다. 화면을 확인한 뒤 남은 리플레이를 다시 올려 주세요.';
   if (c === 'missing') return '삭제된 선수가 있어 기록할 수 없습니다.';
-  if (c === 'stale') return '다른 사람이 먼저 기록했습니다. 화면이 최신 상태로 바뀌었습니다.';
+  if (c === 'stale') return '다른 기기에서 먼저 기록하거나 팀을 바꿨습니다. 화면이 최신 상태로 바뀌었으니 확인 후 다시 해 주세요.';
   if (c === 'permission-denied') return 'Firebase 보안 규칙이 쓰기를 막고 있습니다.';
   if (c === 'invalid_argument') return '저장 권한이 없거나 요청이 잘못되었습니다.';
   if (c === 'quota_exceeded') return '저장 공간이 가득 찼습니다. 오래된 기록을 지워 주세요.';
@@ -960,6 +1036,9 @@ function renderTeams() {
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
   // 같은 팀 포지션 교환은 시리즈 중 언제나, 상대 팀과 선수 교환은 1세트 전에만
   const canSwap = !s.done;
+  // 교체 선택칸: 지금 시리즈와 안 맞는 예전 선택은 지운다(브라우저가 첫 선수를 대신 고르는 것을 막음)
+  if (state.subOut && !s.blue.includes(state.subOut) && !s.red.includes(state.subOut)) state.subOut = null;
+  if (state.subIn && (!map[state.subIn] || s.blue.includes(state.subIn) || s.red.includes(state.subIn))) state.subIn = null;
   if (!canSwap) state.swapId = null;
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
@@ -1182,7 +1261,7 @@ function makeSplit(ids) {
   if (!p) { toast('같은 팀/다른 팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
   state.lastKey = p.key;
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
-  run(() => repo.setSeries({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() }));
+  run(() => repo.updateSeries(repo.series, () => ({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })));
 }
 function rolesFor(blue, red, map) {
   const prefs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].pos || []]));
@@ -1195,35 +1274,45 @@ function manualSplit() {
   const map = pmap(), ids = [...state.selected].sort((a, b) => map[b].mmr - map[a].mmr);
   const blue = ids.filter((_, i) => i % 4 === 0 || i % 4 === 3), red = ids.filter((_, i) => i % 4 === 1 || i % 4 === 2);
   state.swapId = null;
-  run(() => repo.setSeries({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() }));
+  run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })));
 }
 function swapPick(id) {
   const s = repo.series; if (!s) return;
   const a = state.swapId;
   if (!a || a === id) { state.swapId = a === id ? null : id; renderTeams(); return; }
   state.swapId = null;
-  if (s.blue.includes(a) === s.blue.includes(id)) {
-    // 같은 팀: 둘의 포지션만 맞바꾼다
-    const roles = { ...s.roles, [a]: s.roles[id], [id]: s.roles[a] };
-    run(() => repo.setSeries({ ...s, roles }));
-    return;
-  }
-  if (s.score.blue + s.score.red > 0) { toast('1세트를 기록한 뒤에는 상대 팀과 선수를 바꿀 수 없습니다.'); renderTeams(); return; }
-  const sw = x => (x === a ? id : x === id ? a : x);
-  const blue = s.blue.map(sw), red = s.red.map(sw);
-  const roles = { ...s.roles, [a]: s.roles[id], [id]: s.roles[a] }; // 서로의 자리(포지션)를 그대로 넘겨받는다
+  const cross = s.blue.includes(a) !== s.blue.includes(id);
+  if (cross && s.score.blue + s.score.red > 0) { toast('1세트를 기록한 뒤에는 상대 팀과 선수를 바꿀 수 없습니다.'); renderTeams(); return; }
   const pm = pmap();
-  run(async () => { await repo.setSeries({ ...s, blue, red, roles, key: '' }); toast(`${(pm[a] || {}).name} ↔ ${(pm[id] || {}).name} 팀을 맞바꿨습니다. 잘못 눌렀다면 두 선수를 다시 누르세요.`); });
+  // 같은 팀이면 포지션만, 상대 팀이면 팀과 자리를 서로 넘겨받는다
+  run(async () => {
+    await repo.updateSeries(s, c => exchange(c, { [a]: id, [id]: a }));
+    if (cross) toast(`${(pm[a] || {}).name} ↔ ${(pm[id] || {}).name} 팀을 맞바꿨습니다. 잘못 눌렀다면 두 선수를 다시 누르세요.`);
+  });
+}
+// 팀 변경 공용: sw {id: 바꿀 id}. 짝끼리 팀과 포지션을 서로 넘겨받는다. 시리즈 밖 선수(교체)는 나간 선수의 자리를 이어받는다
+function exchange(c, sw) {
+  const f = x => sw[x] || x, roles = { ...(c.roles || {}) };
+  for (const [x, y] of Object.entries(sw)) roles[y] = (c.roles || {})[x];
+  const sorted = a => [...a].sort().join();
+  let blue = c.blue.map(f), red = c.red.map(f);
+  const sameTeams = sorted(blue) === sorted(c.blue) && sorted(red) === sorted(c.red);
+  if (sameTeams) { blue = c.blue; red = c.red; } // 같은 팀 안 교환은 포지션만 바뀐다
+  const ids = new Set([...blue, ...red]);
+  for (const k of Object.keys(roles)) if (!ids.has(k)) delete roles[k];
+  return { ...c, blue, red, roles, key: sameTeams ? c.key : '' };
 }
 // 선수 교체: 시리즈 점수는 그대로, 들어온 선수가 나간 선수의 팀·포지션을 이어받는다. MMR은 다음 세트부터
 function subPlayer(out, inn) {
   const s = repo.series, map = pmap();
   if (!s || s.done || !out || !inn || !map[inn] || s.blue.includes(inn) || s.red.includes(inn)) { toast('나가는 선수와 들어올 선수를 모두 골라 주세요.'); return; }
-  const sw = x => (x === out ? inn : x);
-  const roles = { ...s.roles, [inn]: (s.roles || {})[out] }; delete roles[out];
+  if (![...s.blue, ...s.red].includes(out)) { toast('나가는 선수를 다시 골라 주세요.'); return; }
   state.swapId = null; state.replayPlan = null; state.subOut = state.subIn = null;
-  state.selected.delete(out); state.selected.add(inn); saveSel();
-  run(async () => { await repo.setSeries({ ...s, blue: s.blue.map(sw), red: s.red.map(sw), roles, key: '' }); toast(`${(map[out] || {}).name || ''} → ${map[inn].name} 교체`); });
+  run(async () => {
+    await repo.updateSeries(s, c => exchange(c, { [out]: inn }));
+    state.selected.delete(out); state.selected.add(inn); saveSel();
+    toast(`${(map[out] || {}).name || ''} → ${map[inn].name} 교체`);
+  });
 }
 const inSeries = () => repo.series && !repo.series.done && repo.series.score.blue + repo.series.score.red > 0;
 
@@ -1357,7 +1446,7 @@ $('btnClearSel').addEventListener('click', async () => {
   state.selected.clear(); saveSel();
   state.cons = { same: [], diff: [] }; saveCons();
   state.picking = null; state.pick = new Set(); state.swapId = null;
-  if (repo.series) await run(() => repo.setSeries(null));
+  if (repo.series) await run(() => repo.updateSeries(repo.series, () => (null)));
   renderTeams(); toast('팀 짜기를 초기화했습니다.');
 });
 $('btnSplit').addEventListener('click', () => makeSplit());
@@ -1372,7 +1461,8 @@ $('result').addEventListener('click', async e => {
     if (state.lateId !== id) { state.lateId = id; renderTeams(); setTimeout(() => { if (state.lateId === id) { state.lateId = null; renderTeams(); } }, 4000); return; }
     state.lateId = null;
     const amt = state.lateAmt || 10;
-    if (await run(() => repo.updatePlayer(id, { mmr: p.mmr - amt, lates: (p.lates || 0) + 1, lateLog: [...lateLogOf(p), amt] }))) toast(`${p.name} 지각 −${amt} (누적 ${(p.lates || 0) + 1}회)`);
+    let after = null;
+    if (await run(async () => { after = await repo.patchPlayer(id, q => ({ mmr: q.mmr - amt, lates: (q.lates || 0) + 1, lateLog: [...lateLogOf(q), amt] })); })) toast(`${p.name} 지각 −${amt} (누적 ${after.lates}회)`);
     return;
   }
   if (e.target.id === 'btnSub') return subPlayer($('subOut').value, $('subIn').value);
@@ -1382,28 +1472,27 @@ $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReplayRecord') return recordReplayPlan();
   if (e.target.id === 'btnReplayFixTeams') return fixReplayTeams();
   const sw = e.target.closest('[data-swap]'); if (sw) return swapPick(sw.dataset.swap);
-  if (e.target.id === 'btnBo') { const s = repo.series; if (s.score.blue + s.score.red === 0 && !s.done) { const w = winsOf(s) === 3 ? 2 : 3; try { localStorage.setItem('mmr-bo', String(w)); } catch (e) {} run(() => repo.setSeries({ ...s, wins: w })); } return; }
-  if (e.target.id === 'btnClose') { run(() => repo.setSeries(null)); return; }
+  if (e.target.id === 'btnBo') { const s = repo.series; if (s.score.blue + s.score.red === 0 && !s.done) { const w = winsOf(s) === 3 ? 2 : 3; try { localStorage.setItem('mmr-bo', String(w)); } catch (e) {} run(() => repo.updateSeries(s, c => ({ ...c, wins: w }))); } return; }
+  if (e.target.id === 'btnClose') { run(() => repo.updateSeries(repo.series, () => (null))); return; }
   if (e.target.id === 'btnAgain') {
     const s = repo.series;
-    run(() => repo.setSeries({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s) }));
+    run(() => repo.updateSeries(repo.series, () => ({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s) })));
     return;
   }
-  if (e.target.id === 'btnEndSeries') { if (await run(() => repo.setSeries(null))) toast('시리즈를 종료했습니다.'); return; }
+  if (e.target.id === 'btnEndSeries') { if (await run(() => repo.updateSeries(repo.series, () => (null)))) toast('시리즈를 종료했습니다.'); return; }
   const w = e.target.closest('[data-win]'); if (!w) return;
   const winner = w.dataset.win, s = repo.series, map = pmap();
   if (!s) return;
   const ids = [...s.blue, ...s.red];
   if (ids.some(id => !map[id])) { toast('삭제된 선수가 있습니다. 시리즈를 종료하고 팀을 다시 짜 주세요.'); return; }
-  const { deltas, pBlue } = computeDeltas(s.blue, s.red, winner, map, s.roles);
   const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
   let r = null;
-  const ok = await run(async () => { r = await repo.recordGame(s, winner, deltas, pBlue, names, map); });
+  const ok = await run(async () => { r = await repo.recordGame(s, winner, names, map); });
   if (ok) {
     const wId = (winner === 'blue' ? s.blue : s.red)[0], wName = winner === 'blue' ? '블루' : '레드';
     toast(r.finished
-      ? `${wName} 시리즈 승리 ${r.score.blue}:${r.score.red} · 마지막 세트 ${signed(deltas[wId])}`
-      : `${wName} 승리 기록됨 · ${r.score.blue}:${r.score.red} · 승리팀 ${signed(deltas[wId])}`);
+      ? `${wName} 시리즈 승리 ${r.score.blue}:${r.score.red} · 마지막 세트 ${signed(r.deltas[wId])}`
+      : `${wName} 승리 기록됨 · ${r.score.blue}:${r.score.red} · 승리팀 ${signed(r.deltas[wId])}`);
   }
 });
 
@@ -1462,8 +1551,10 @@ function replayPlanHtml(s) {
   const dupTarget = attach && new Set(plan.items.map(it => it.targetId).filter(Boolean)).size < plan.items.filter(it => it.targetId).length;
   const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${attach ? '' : `${played + k + 1}세트 · `}${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'}${tgt(it) && it.winner && it.winner !== tgt(it).winner ? ' · <span class="down">기록과 다름</span>' : ''} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span>${attach ? pickSet(it, k) : ''}</div>`).join('');
   const wrongIds = attach ? [] : [...new Set(plan.items.flatMap(it => it.wrong || []))], pm = pmap();
-  const fixable = wrongIds.length && wrongIds.filter(id => s.blue.includes(id)).length === wrongIds.filter(id => s.red.includes(id)).length;
-  const wrongHtml = wrongIds.length ? `<span class="down">리플레이에서는 앱과 반대 팀에서 뛴 선수: ${wrongIds.map(id => esc((pm[id] || {}).name || id)).join(', ')}. 이대로 기록하면 이 선수들의 승패와 점수가 틀어집니다. ${fixable ? '아래 버튼으로 팀을 리플레이대로 맞춘 뒤 기록하세요.' : '닉네임 연결이 맞는지 확인해 주세요.'}</span>${fixable ? `<div class="row"><button class="small" id="btnReplayFixTeams" ${dis}>리플레이대로 팀 맞추기</button></div>` : ''}` : '';
+  const fixSw = wrongIds.length ? replayFixPlan(plan, s) : null, fixable = !!fixSw;
+  const POS_NAME = Object.fromEntries(POSITIONS.map(x => [x[0], x[1]]));
+  const moveText = fixSw ? Object.keys(fixSw).map(id => `${esc((pm[id] || {}).name || id)} → ${s.blue.includes(id) ? '레드' : '블루'} ${POS_NAME[s.roles[fixSw[id]]] || ''}`).join(', ') : '';
+  const wrongHtml = wrongIds.length ? `<span class="down">리플레이에서는 앱과 반대 팀에서 뛴 선수: ${wrongIds.map(id => esc((pm[id] || {}).name || id)).join(', ')}. 이대로 기록하면 이 선수들의 승패와 점수가 틀어집니다. ${fixable ? '아래 버튼으로 팀을 리플레이대로 맞춘 뒤 기록하세요.' : '닉네임 연결이 맞는지 확인해 주세요.'}</span>${fixable ? `<span class="muted">바뀔 내용: ${moveText}. 닉네임 연결이 틀려도 이 경고가 나오니 위 연결을 먼저 확인하세요.</span><div class="row"><button class="small${state.fixConfirm ? ' danger' : ''}" id="btnReplayFixTeams" ${dis}>${state.fixConfirm ? '한 번 더 누르면 팀 변경' : '리플레이대로 팀 맞추기'}</button></div>` : ''}` : '';
   const bad = attach ? (dupTarget || !plan.items.some(it => it.targetId && it.mapped)) : plan.items.some(it => !it.winner) || wrongIds.length > 0;
   return `<div class="shot">
     <span class="muted">${attach ? '이 시리즈의 세트에 통계만 붙입니다. 승패와 MMR은 바뀌지 않습니다. 이미 붙인 리플레이는 같은 세트에 합쳐지고(빠진 선수 보충), 새 리플레이는 경기 번호순으로 세트를 골라 두었으니 필요하면 오른쪽에서 고쳐 주세요.' : '경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.'}${plan.skipped ? ` 이미 기록됐거나 같은 경기인 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}${plan.renamed ? ` <span class="down">이름이 바뀐 파일 ${plan.renamed}개는 순서를 알 수 없어 맨 뒤에 두었습니다.</span>` : ''}</span>
@@ -1486,12 +1577,9 @@ function pentaToast(gains) {
 }
 // 이미 기록된 경기에 통계를 붙이다 펜타킬이 확인되면 보너스를 준다. deltas에 더해 두어 삭제·복원 때 같이 움직인다
 async function awardPenta(m, pairs) {
-  const gains = pentaGains(m, pairs); if (!Object.keys(gains).length) return;
-  const deltas = { ...(m.deltas || {}) }, bonus = { ...(m.pentaBonus || {}) };
-  for (const [pid, g] of Object.entries(gains)) { deltas[pid] = (deltas[pid] || 0) + g; bonus[pid] = (bonus[pid] || 0) + g; }
-  await repo.updateMatch(m.id, { deltas, pentaBonus: bonus });
-  for (const [pid, g] of Object.entries(gains)) { const p = pmap()[pid]; if (p) await repo.updatePlayer(pid, { mmr: p.mmr + g }); }
-  pentaToast(gains);
+  if (!Object.keys(pentaGains(m, pairs)).length) return;
+  const gains = await repo.applyPenta(m.id, pairs);
+  if (Object.keys(gains).length) pentaToast(gains);
 }
 async function learnRiotNames(pairs) {
   for (const [pid, st] of pairs) {
@@ -1582,16 +1670,32 @@ async function attachReplayPlan() {
   if (ok) toast(`${n}세트에 리플레이 통계를 붙였습니다.`);
   else if (n) toast(`${n}세트만 붙이고 멈췄습니다. 나머지는 다시 올려 주세요.`);
 }
-// 리플레이와 팀이 다른 선수를 서로 맞바꾼다(블루 쪽 n명 ↔ 레드 쪽 n명, 자리는 서로 넘겨받음). 세트 진행 중에도 허용
-async function fixReplayTeams() {
-  const plan = state.replayPlan, s = repo.series; if (!plan || !s || s.done) return;
+// 리플레이와 팀이 다른 선수를 반대 팀으로 옮긴다(블루 쪽 n명 ↔ 레드 쪽 n명). 세트 진행 중에도 허용
+// 포지션은 리플레이에 기록된 포지션을 우선으로, 없으면 맞바꾼 상대의 자리를 넘겨받는다
+const POS_KO = { 탑: 'top', 정글: 'jungle', 미드: 'mid', 원딜: 'adc', 서폿: 'support' };
+function replayFixPlan(plan, s) {
   const wrong = [...new Set(plan.items.flatMap(it => it.wrong || []))];
   const wb = wrong.filter(id => s.blue.includes(id)), wr = wrong.filter(id => s.red.includes(id));
-  if (!wb.length || wb.length !== wr.length) return;
-  const sw = Object.fromEntries([...wb.map((id, i) => [id, wr[i]]), ...wr.map((id, i) => [id, wb[i]])]);
-  const roles = { ...s.roles }; for (const [a, b] of Object.entries(sw)) roles[a] = (s.roles || {})[b];
-  const next = { ...s, blue: s.blue.map(x => sw[x] || x), red: s.red.map(x => sw[x] || x), roles, key: '' };
-  if (await run(() => repo.setSeries(next))) { applyExtraMap(plan, next); renderTeams(); toast('리플레이대로 팀을 맞췄습니다.'); }
+  if (!wb.length || wb.length !== wr.length) return null;
+  const posOf = pid => {
+    for (const it of plan.items) for (const [i, x] of Object.entries(it.rowMap || {})) if (x === pid) {
+      const e = (it.parsed.players[i].extra || []).find(e => e.key === '포지션'); if (e && POS_KO[e.value]) return POS_KO[e.value];
+    }
+    return null;
+  };
+  // 옮겨 가는 팀에서 비는 자리 중 리플레이 포지션과 같은 상대와 짝짓는다. 나머지는 순서대로
+  const sw = {}, left = [...wr];
+  for (const b of wb) { const k = left.findIndex(r => s.roles[r] === posOf(b)); const r = left.splice(k >= 0 ? k : 0, 1)[0]; sw[b] = r; sw[r] = b; }
+  return sw;
+}
+async function fixReplayTeams() {
+  const plan = state.replayPlan, s = repo.series; if (!plan || !s || s.done) return;
+  const sw = replayFixPlan(plan, s); if (!sw) return;
+  // 닉네임 연결이 틀려도 같은 경고가 나오므로 한 번 더 눌러 확인한다
+  if (!state.fixConfirm) { state.fixConfirm = true; renderTeams(); setTimeout(() => { if (state.fixConfirm) { state.fixConfirm = false; renderTeams(); } }, 6000); return; }
+  state.fixConfirm = false;
+  let next = null;
+  if (await run(async () => { await repo.updateSeries(s, c => (next = exchange(c, sw))); })) { applyExtraMap(plan, next); renderTeams(); toast('리플레이대로 팀을 맞췄습니다.'); }
 }
 async function recordReplayPlan() {
   const plan = state.replayPlan; let done = 0;
@@ -1601,14 +1705,12 @@ async function recordReplayPlan() {
       const s = repo.series; if (!s || s.done || s.sid !== plan.sid) break;
       const map = pmap(), ids = [...s.blue, ...s.red];
       if (ids.some(id => !map[id])) throw { code: 'missing' };
-      const { deltas, pBlue } = computeDeltas(s.blue, s.red, it.winner, map, s.roles);
       const names = Object.fromEntries(ids.map(id => [id, map[id].name]));
       const played = s.score.blue + s.score.red, g0 = map[ids[0]].games;
       const pairs = Object.entries(it.rowMap).map(([i, pid]) => [pid, it.parsed.players[i]]);
       // 7. 승패와 통계·경기 번호를 같은 경기 문서에 한 번에 쓴다
       const penta = pentaGains(null, pairs);
-      for (const [pid, g] of Object.entries(penta)) deltas[pid] = (deltas[pid] || 0) + g;
-      await repo.recordGame(s, it.winner, deltas, pBlue, names, map, { ...statsPatch({}, pairs, { ...it.parsed, gameId: it.gameId }), ...(Object.keys(penta).length ? { pentaBonus: penta } : {}) });
+      await repo.recordGame(s, it.winner, names, map, { ...statsPatch({}, pairs, { ...it.parsed, gameId: it.gameId }), ...(Object.keys(penta).length ? { pentaBonus: penta } : {}) }, penta);
       pentaToast(penta);
       await learnRiotNames(pairs);
       done++;
@@ -1773,8 +1875,9 @@ function renderEditLate(p) {
 $('editLate').addEventListener('click', async e => {
   if (e.target.id !== 'btnLateUndo') return;
   const p = pmap()[state.editId]; if (!p || !p.lates) return;
-  const log = lateLogOf(p), amt = log[log.length - 1];
-  if (await run(() => repo.updatePlayer(p.id, { mmr: p.mmr + amt, lates: p.lates - 1, lateLog: log.slice(0, -1) }))) { toast(`${p.name} 지각 1회 취소 (+${amt})`); renderEditLate(pmap()[p.id]); }
+  let amt = 0;
+  const undo = q => { if (!q.lates) return null; const log = lateLogOf(q); amt = log[log.length - 1]; return { mmr: q.mmr + amt, lates: q.lates - 1, lateLog: log.slice(0, -1) }; };
+  if (await run(async () => { if (!(await repo.patchPlayer(p.id, undo))) throw { code: 'stale' }; })) { toast(`${p.name} 지각 1회 취소 (+${amt})`); renderEditLate(pmap()[p.id]); }
 });
 $('btnEditCancel').addEventListener('click', () => { closeEdit(); renderPlayers(); });
 $('btnEditSave').addEventListener('click', async () => {
