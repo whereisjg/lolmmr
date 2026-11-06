@@ -1212,7 +1212,8 @@ function swapPick(id) {
   const sw = x => (x === a ? id : x === id ? a : x);
   const blue = s.blue.map(sw), red = s.red.map(sw);
   const roles = { ...s.roles, [a]: s.roles[id], [id]: s.roles[a] }; // 서로의 자리(포지션)를 그대로 넘겨받는다
-  run(() => repo.setSeries({ ...s, blue, red, roles, key: '' }));
+  const pm = pmap();
+  run(async () => { await repo.setSeries({ ...s, blue, red, roles, key: '' }); toast(`${(pm[a] || {}).name} ↔ ${(pm[id] || {}).name} 팀을 맞바꿨습니다. 잘못 눌렀다면 두 선수를 다시 누르세요.`); });
 }
 // 선수 교체: 시리즈 점수는 그대로, 들어온 선수가 나간 선수의 팀·포지션을 이어받는다. MMR은 다음 세트부터
 function subPlayer(out, inn) {
