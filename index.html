@@ -608,18 +608,20 @@ function parseReplayText(text, names = {}) {
 function replayGameId(fileName) { const m = String(fileName).match(/(\d{8,})/); return m ? m[1] : null; }
 // rowMap {행: 선수id}로 우리 블루팀이 게임 안에서 어느 진영이었는지 다수결로 정하고, 시리즈 기준 승리 팀을 돌려준다
 function replayWinner(parsed, rowMap, series) {
-  const vote = { blue: 0, red: 0 };
+  const vote = { blue: 0, red: 0 }, voter = {};
   let mapped = 0, mixed = 0;
   for (const [i, pid] of Object.entries(rowMap)) {
     const side = parsed.players[i].team; if (side !== 'blue' && side !== 'red') continue;
     mapped++;
-    const ourBlue = series.blue.includes(pid);
-    vote[ourBlue ? side : side === 'blue' ? 'red' : 'blue']++;
+    const ourBlue = series.blue.includes(pid), v = ourBlue ? side : side === 'blue' ? 'red' : 'blue';
+    vote[v]++; voter[pid] = v;
   }
-  if (!mapped || parsed.winner === 'unknown') return { winner: null, mapped };
+  if (!mapped || parsed.winner === 'unknown') return { winner: null, mapped, wrong: [] };
   const blueSide = vote.blue >= vote.red ? 'blue' : 'red';
   mixed = Math.min(vote.blue, vote.red);
-  return { winner: parsed.winner === blueSide ? 'blue' : 'red', mapped, mixed };
+  // wrong: 리플레이에서는 앱과 반대 팀에서 뛴 선수(다수결의 소수 쪽)
+  const wrong = mixed ? Object.keys(voter).filter(pid => voter[pid] !== blueSide) : [];
+  return { winner: parsed.winner === blueSide ? 'blue' : 'red', mapped, mixed, wrong };
 }
 // 경기 m에 통계를 합친 패치. pairs: [[선수id, stat]], src: {duration, winner, teams, notes, gameId}
 // 빈 값은 기존 값을 유지한다(리플레이는 teams가 비어 있어 결과창의 팀 합계를 지우지 않게)
@@ -1377,6 +1379,7 @@ $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReplaySeries') { $('replaySeriesInput').click(); return; }
   if (e.target.id === 'btnReplayCancel') { state.replayPlan = null; renderTeams(); return; }
   if (e.target.id === 'btnReplayRecord') return recordReplayPlan();
+  if (e.target.id === 'btnReplayFixTeams') return fixReplayTeams();
   const sw = e.target.closest('[data-swap]'); if (sw) return swapPick(sw.dataset.swap);
   if (e.target.id === 'btnBo') { const s = repo.series; if (s.score.blue + s.score.red === 0 && !s.done) { const w = winsOf(s) === 3 ? 2 : 3; try { localStorage.setItem('mmr-bo', String(w)); } catch (e) {} run(() => repo.setSeries({ ...s, wins: w })); } return; }
   if (e.target.id === 'btnClose') { run(() => repo.setSeries(null)); return; }
@@ -1457,12 +1460,16 @@ function replayPlanHtml(s) {
   const pickSet = (it, k) => `<select data-target="${k}" aria-label="붙일 세트"><option value="">붙이지 않음</option>${plan.games.map(g => `<option value="${esc(g.id)}" ${g.id === it.targetId ? 'selected' : ''}>${g.game}세트 (${g.winner === 'blue' ? '블루' : '레드'} 승)</option>`).join('')}</select>`;
   const dupTarget = attach && new Set(plan.items.map(it => it.targetId).filter(Boolean)).size < plan.items.filter(it => it.targetId).length;
   const rows = plan.items.map((it, k) => `<div class="shot-row"><span class="shot-who">${attach ? '' : `${played + k + 1}세트 · `}${it.winner ? `<b class="${it.winner === 'blue' ? 'b' : 'down'}">${it.winner === 'blue' ? '블루' : '레드'} 승</b>` : '<b class="down">승패 판단 불가</b>'}${tgt(it) && it.winner && it.winner !== tgt(it).winner ? ' · <span class="down">기록과 다름</span>' : ''} · ${esc(it.parsed.duration)} · 닉네임 연결 ${it.mapped}/${it.parsed.players.length}명${it.mixed ? ` · <span class="down">팀이 섞여 보임(${it.mixed}명)</span>` : ''}</span><span class="muted num">${esc(it.gameId || it.name)}</span>${attach ? pickSet(it, k) : ''}</div>`).join('');
-  const bad = attach ? (dupTarget || !plan.items.some(it => it.targetId && it.mapped)) : plan.items.some(it => !it.winner);
+  const wrongIds = attach ? [] : [...new Set(plan.items.flatMap(it => it.wrong || []))], pm = pmap();
+  const fixable = wrongIds.length && wrongIds.filter(id => s.blue.includes(id)).length === wrongIds.filter(id => s.red.includes(id)).length;
+  const wrongHtml = wrongIds.length ? `<span class="down">리플레이에서는 앱과 반대 팀에서 뛴 선수: ${wrongIds.map(id => esc((pm[id] || {}).name || id)).join(', ')}. 이대로 기록하면 이 선수들의 승패와 점수가 틀어집니다. ${fixable ? '아래 버튼으로 팀을 리플레이대로 맞춘 뒤 기록하세요.' : '닉네임 연결이 맞는지 확인해 주세요.'}</span>${fixable ? `<div class="row"><button class="small" id="btnReplayFixTeams" ${dis}>리플레이대로 팀 맞추기</button></div>` : ''}` : '';
+  const bad = attach ? (dupTarget || !plan.items.some(it => it.targetId && it.mapped)) : plan.items.some(it => !it.winner) || wrongIds.length > 0;
   return `<div class="shot">
     <span class="muted">${attach ? '이 시리즈의 세트에 통계만 붙입니다. 승패와 MMR은 바뀌지 않습니다. 이미 붙인 리플레이는 같은 세트에 합쳐지고(빠진 선수 보충), 새 리플레이는 경기 번호순으로 세트를 골라 두었으니 필요하면 오른쪽에서 고쳐 주세요.' : '경기 번호순으로 세트를 정했습니다. 시리즈가 끝나면 남은 파일은 기록하지 않습니다.'}${plan.skipped ? ` 이미 기록됐거나 같은 경기인 리플레이 ${plan.skipped}개는 뺐습니다.` : ''}${plan.renamed ? ` <span class="down">이름이 바뀐 파일 ${plan.renamed}개는 순서를 알 수 없어 맨 뒤에 두었습니다.</span>` : ''}</span>
     ${rows}
     ${unmatchedHtml(plan, s)}
-    ${bad ? `<span class="down">${attach ? (dupTarget ? '두 리플레이가 같은 세트를 가리키고 있습니다. 세트를 다시 골라 주세요.' : '붙일 수 있는 리플레이가 없습니다. 닉네임 연결이나 세트 선택을 확인해 주세요.') : '닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.'}</span>` : ''}
+    ${wrongHtml}
+    ${bad && !wrongIds.length ? `<span class="down">${attach ? (dupTarget ? '두 리플레이가 같은 세트를 가리키고 있습니다. 세트를 다시 골라 주세요.' : '붙일 수 있는 리플레이가 없습니다. 닉네임 연결이나 세트 선택을 확인해 주세요.') : '닉네임이 연결된 선수가 없어 승패를 알 수 없는 파일이 있습니다. 선수 탭에서 롤 닉네임을 등록한 뒤 다시 올려 주세요.'}</span>` : ''}
     <div class="row"><button class="small primary" id="btnReplayRecord" ${bad || !plan.items.length ? 'disabled' : dis}>${attach ? '통계 추가' : '기록하기'}</button><button class="small" id="btnReplayCancel">취소</button></div>
   </div>`;
 }
@@ -1541,7 +1548,7 @@ function applyExtraMap(plan, s) {
     const rowMap = { ...it.baseMap }, used = new Set(Object.values(rowMap));
     it.parsed.players.forEach((pl, i) => { const pid = plan.extra[pl.name]; if (!(i in rowMap) && pid && !used.has(pid)) { rowMap[i] = pid; used.add(pid); } });
     it.rowMap = rowMap;
-    Object.assign(it, { mixed: 0 }, replayWinner(it.parsed, rowMap, s));
+    Object.assign(it, { mixed: 0, wrong: [] }, replayWinner(it.parsed, rowMap, s));
   }
 }
 $('result').addEventListener('change', e => {
@@ -1573,6 +1580,17 @@ async function attachReplayPlan() {
   state.replayPlan = null; renderAll();
   if (ok) toast(`${n}세트에 리플레이 통계를 붙였습니다.`);
   else if (n) toast(`${n}세트만 붙이고 멈췄습니다. 나머지는 다시 올려 주세요.`);
+}
+// 리플레이와 팀이 다른 선수를 서로 맞바꾼다(블루 쪽 n명 ↔ 레드 쪽 n명, 자리는 서로 넘겨받음). 세트 진행 중에도 허용
+async function fixReplayTeams() {
+  const plan = state.replayPlan, s = repo.series; if (!plan || !s || s.done) return;
+  const wrong = [...new Set(plan.items.flatMap(it => it.wrong || []))];
+  const wb = wrong.filter(id => s.blue.includes(id)), wr = wrong.filter(id => s.red.includes(id));
+  if (!wb.length || wb.length !== wr.length) return;
+  const sw = Object.fromEntries([...wb.map((id, i) => [id, wr[i]]), ...wr.map((id, i) => [id, wb[i]])]);
+  const roles = { ...s.roles }; for (const [a, b] of Object.entries(sw)) roles[a] = (s.roles || {})[b];
+  const next = { ...s, blue: s.blue.map(x => sw[x] || x), red: s.red.map(x => sw[x] || x), roles, key: '' };
+  if (await run(() => repo.setSeries(next))) { applyExtraMap(plan, next); renderTeams(); toast('리플레이대로 팀을 맞췄습니다.'); }
 }
 async function recordReplayPlan() {
   const plan = state.replayPlan; let done = 0;
