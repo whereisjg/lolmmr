@@ -265,7 +265,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <button id="btnClearSel">초기화</button>
       </div>
       <div id="draft" hidden></div>
-      <div id="draftMusic" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none"></div>
+      <div id="draftMusic" style="margin-top:8px"></div>
     </div>
     <div class="panel" id="result" hidden></div>
   </section>
@@ -1303,11 +1303,11 @@ function renderDraft(map, ok) {
     <div class="chips">${left.map(id => `<button class="chip" data-draft="${esc(id)}">${royalName(id, map[id].name)}<span class="num">${map[id].mmr}</span></button>`).join('')}</div>` : ''}
     <div class="row" style="margin-top:10px"><button class="primary" id="btnDraftGo"${!left.length && !state.busy ? '' : ' disabled'}>이 팀으로 시작</button><button id="btnDraftBack"${used.size ? '' : ' disabled'}>되돌리기</button><button id="btnDraftCancel">취소</button><button class="small" id="btnDraftMusic">${state.musicOff ? '음악 켜기' : '음악 끄기'}</button></div>`;
 }
-// 드래프트 중 BGM(YouTube). 버튼 클릭 직후 생성되어 자동 재생이 허용된다. 다시 그려도 끊기지 않게 #draft 밖에 둔다
+// 드래프트 중 BGM(YouTube). 작은 플레이어로 보여 자동 재생이 막히면 직접 누를 수 있게 한다. 다시 그려도 끊기지 않게 #draft 밖에 둔다
 const DRAFT_MUSIC = 'cciyYbPeCR0';
 function syncDraftMusic() {
   const m = $('draftMusic'), on = !!state.draft && !state.musicOff;
-  if (on && !m.firstChild) m.innerHTML = `<iframe width="1" height="1" allow="autoplay" src="https://www.youtube.com/embed/${DRAFT_MUSIC}?autoplay=1&loop=1&playlist=${DRAFT_MUSIC}"></iframe>`;
+  if (on && !m.firstChild) m.innerHTML = `<iframe style="width:100%;max-width:320px;aspect-ratio:16/9;border:0;border-radius:8px" allow="autoplay; encrypted-media" allowfullscreen src="https://www.youtube.com/embed/${DRAFT_MUSIC}?autoplay=1&loop=1&playlist=${DRAFT_MUSIC}"></iframe>`;
   else if (!on && m.firstChild) m.innerHTML = '';
 }
 $('draft').addEventListener('click', e => {
