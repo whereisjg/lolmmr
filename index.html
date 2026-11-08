@@ -1617,6 +1617,8 @@ $('chips').addEventListener('click', e => {
   saveSel(); renderTeams();
 });
 // 카톡 글 붙여넣기: 등록된 선수 이름이나 AKA(aliases)과 똑같은 단어만 골라 선택을 바꾼다
+const PASTE_POS_WORDS = '서포터|서폿|원딜|정글|미드|바텀|탑|봇|top|jungle|jg|mid|adc|bot|support|sup';
+const PASTE_POS = new RegExp(`^(?:${PASTE_POS_WORDS})(.{2,})$`), PASTE_POS_END = new RegExp(`^(.{2,}?)(?:${PASTE_POS_WORDS})$`);
 function parsePaste(text, players) {
   const key = x => x.replace(/\s+/g, '').toLowerCase();
   const byName = new Map(players.flatMap(p => (p.aliases || []).map(a => [key(a), p.id])));
@@ -1631,6 +1633,8 @@ function parsePaste(text, players) {
     const w = r.replace(/^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$/g, ''), k = key(w), at = r.startsWith('@');
     if (!w) continue;
     let id = byName.get(k);
+    // 포지션이 붙은 이름(원딜강래, 탑성훈, 강래원딜): 앞뒤 포지션 단어를 떼고 다시 찾음
+    if (!id) { const m = PASTE_POS.exec(k) || PASTE_POS_END.exec(k); if (m && m[1]) id = byName.get(m[1]); }
     // 성 + 이름(김강래 → 강래)
     if (!id && /^[가-힣]{3,}$/.test(w)) id = only(names.filter(n => k.length === n.length + 1 && k.endsWith(n)));
     // @멘션은 카톡 이름 안에 선수 이름이 들어 있으면 인정(@ㄱ나리뷰티끄 → 나리). 가장 긴 이름 우선
