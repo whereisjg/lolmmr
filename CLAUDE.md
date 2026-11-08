@@ -55,7 +55,7 @@
 - 이스터에그(사용법에 안 적음): 리플레이·결과창 stats의 `extra` `펜타킬` 1번당 MMR +`PENTA_BONUS`(5). 일괄 기록 시 `deltas`에 포함하고 `matches.pentaBonus{id:점수}` 기록, 나중에 통계를 붙일 때는 `awardPenta`로 차액만 지급(중복 없음). deltas에 들어가 삭제·복원 시 함께 움직임. 기록 카드에 `펜타` 딱지
 
 ## 화면 구성
-- 포지션 표시는 롤 라인 아이콘 `posIcon(k)`(CommunityDragon `icon-position-*.png`, 실패 시 글자): 드래프트 필터 `.dpf`, 슬롯 선호 2칸 `.dspells`, 시리즈 슬롯 배정 포지션(아이콘+글자), 기록 카드 `.role`
+- 포지션 표시는 롤 라인 아이콘 `posIcon(k)`(CommunityDragon `icon-position-*.png`, 실패 시 글자): 드래프트 필터 `.dpf`, 슬롯 선호 2칸 `.dspells`(선호 없음은 첫 칸에 `fill` 상관없음 아이콘), 시리즈 슬롯 배정 포지션(아이콘+글자), 기록 카드 `.role`
 - 순위 1위(`kingId`: 한 세트 이상 뛴 선수 중 MMR 최고, 동점은 가나다순)는 모든 화면에서 황금 이름(`royalName`: 왕관 + 반짝이는 이름). 팀 짜기 칩(`.royal-chip`), 팀 카드, 기록 카드, 선수 목록, 순위 줄, 통계 카드
 - 딱지(배치·비겁자·방패·연승가속/연패가속·펜타)는 `data-tip`에 설명. 누르면 말풍선(`.tip-pop`, document 캡처 클릭)으로 표시, 바깥 클릭·스크롤·탭 이동 시 닫힘. 새 딱지도 `data-tip`으로
 - 상단 `음악` 버튼(`#btnMusic`): YouTube `MUSIC_ID` 플레이어(`#music` iframe, `enablejsapi=1`, 로드 후 postMessage `setVolume` `MUSIC_VOL`=20)를 켜고 끔. `#btnMusicFold` 접기는 플레이어를 1px로 숨겨 소리 유지. 탭 이동해도 유지

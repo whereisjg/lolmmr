@@ -1184,7 +1184,7 @@ function renderTeams() {
       const p = map[id], r = s.roles[id], off = isOffRole(p, r), pos = p.pos || [];
       const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
       const tags = `${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
-      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
+      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="dteam ${side}"><div class="dhead"><span>${side === 'blue' ? '블루' : '레드'}</span><span class="num">평균 ${Math.round(avg)}</span></div>${rows}
@@ -1230,10 +1230,11 @@ function champPic(name) {
   return id ? `<img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/champion/${encodeURIComponent(id)}.png" alt="" loading="lazy">` : '';
 }
 // 포지션 아이콘(CommunityDragon, 롤 클라이언트 라인 아이콘). 못 받으면 글자 첫 자로
-const POS_ICON = { top: 'top', jungle: 'jungle', mid: 'middle', adc: 'bottom', support: 'utility' };
+const POS_ICON = { top: 'top', jungle: 'jungle', mid: 'middle', adc: 'bottom', support: 'utility', fill: 'fill' };
 function posIcon(k) {
   if (!POS_ICON[k]) return '';
-  return `<img class="posi" src="https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions/icon-position-${POS_ICON[k]}.png" alt="${POS_LABEL[k]}" title="${POS_LABEL[k]}" onerror="this.replaceWith(document.createTextNode('${POS_LABEL[k].slice(0, 1)}'))">`;
+  const label = POS_LABEL[k] || '상관없음';
+  return `<img class="posi" src="https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions/icon-position-${POS_ICON[k]}.png" alt="${label}" title="${label}" onerror="this.replaceWith(document.createTextNode('${label.slice(0, 1)}'))">`;
 }
 function mpicHtml(c) { const p = champPic(c); return p ? `<span class="mpic" title="${esc(c)}">${p}</span>` : ''; }
 function fearlessHtml(s) {
@@ -1455,7 +1456,7 @@ function renderDraft(map, ok) {
   // 슬롯: 팀장 → 지명 순서. 지금 차례 팀의 다음 빈 칸은 '선택 중...'(남은 시간 숫자 표시)
   const pickNo = {}, ini = id => face(map[id]), posOf = id => map[id].pos || [];
   d.picks.forEach((id, i) => { pickNo[id] = i + 1; });
-  const spells = id => `<span class="dspells">${[0, 1].map(i => `<i>${id && posOf(id)[i] ? posIcon(posOf(id)[i]) : ''}</i>`).join('')}</span>`;
+  const spells = id => `<span class="dspells">${[0, 1].map(i => `<i>${id && posOf(id)[i] ? posIcon(posOf(id)[i]) : id && !posOf(id).length && !i ? posIcon('fill') : ''}</i>`).join('')}</span>`;
   const slots = side => Array.from({ length: half }, (_, k) => {
     const id = t[side][k], cur = !id && left.length && side === turn && k === t[side].length;
     const sub = id ? `${id === d.cap[side] ? '팀장' : `${pickNo[id]}픽`}${posOf(id).length ? ' · ' + POS_LABEL[posOf(id)[0]] : ''}` : cur ? '선택 중...' : `${k + 1}번${k ? '' : ' 팀장'}`;
