@@ -304,6 +304,8 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 .cav img, .av img, .dav img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+/* Data Dragon 챔피언 사각 이미지는 가장자리에 검은 테두리가 들어 있어 살짝 확대해 잘라냄 */
+.cav img, .av img, .dav img, .mpic img, .fpic img { transform: scale(1.12); }
 .cav, .av, .dav { overflow: hidden; }
 #editFace { flex: none; width: 36px; height: 36px; display: grid; place-items: center; font-weight: 700; border: 1px solid var(--line-gold); background: var(--d-tile); }
 .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; }
