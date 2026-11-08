@@ -425,7 +425,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
     <div class="panel help">
       <div class="row between"><h2>사용법</h2><a href="#teams" class="small-link">팀 짜기로 돌아가기</a></div>
 
-      <p>사이트에 들어오면 <b>내 이름</b>을 누릅니다(이름 없이 보려면 <b>게스트</b>). 경기를 기록하거나 지울 때 누가 했는지 남습니다. 위쪽 내 이름 버튼으로 바꿀 수 있습니다.</p>
+      <p>사이트에 들어오면 <b>내 이름</b>을 누릅니다(이름 없이 보려면 <b>게스트</b>. 게스트는 보기만 되고 기록·수정은 안 됩니다). 경기를 기록하거나 지울 때 누가 했는지 남습니다. 위쪽 내 이름 버튼으로 바꿀 수 있습니다.</p>
       <h3>처음 한 번</h3>
       <ol>
         <li><b>선수</b> 탭에서 본인 이름의 <b>편집</b>을 누릅니다.</li>
@@ -1128,6 +1128,7 @@ function toast(msg) {
 }
 function errMsg(e) {
   const c = e && e.code;
+  if (c === 'guest') return '게스트는 데이터를 바꿀 수 없습니다. 위쪽 게스트 버튼을 눌러 로그인하세요.';
   if (c === 'slow') return '저장 반영이 늦어 멈췄습니다. 화면을 확인한 뒤 남은 리플레이를 다시 올려 주세요.';
   if (c === 'missing') return '삭제된 선수가 있어 기록할 수 없습니다.';
   if (c === 'stale') return '다른 기기에서 먼저 기록하거나 팀을 바꿨습니다. 화면이 최신 상태로 바뀌었으니 확인 후 다시 해 주세요.';
@@ -1136,6 +1137,11 @@ function errMsg(e) {
   if (c === 'quota_exceeded') return '저장 공간이 가득 찼습니다. 오래된 기록을 지워 주세요.';
   if (c === 'resource_exhausted') return '요청이 너무 많습니다. 잠시 후 다시 시도하세요.';
   return '저장하지 못했습니다. 잠시 후 다시 시도하세요.';
+}
+// 게스트는 저장소 쓰기 전부 막음(선수 추가 포함). 화면 선택·드래프트처럼 저장 안 되는 동작은 그대로
+for (const k of ['addPlayer', 'updatePlayer', 'deletePlayer', 'setMatch', 'updateMatch', 'deleteMatch', 'setSeries', 'updateSeries', 'patchPlayer', 'applyPenta', 'recordGame', 'trashGame', 'restoreGame', 'purgeTrash']) {
+  const f = repo[k];
+  repo[k] = function (...a) { return state.me === 'guest' ? Promise.reject(Object.assign(new Error('guest'), { code: 'guest' })) : f.apply(this, a); };
 }
 async function run(fn) {
   if (state.busy) return false;
