@@ -341,6 +341,7 @@ tr.me td { box-shadow: inset 0 1px 0 var(--d-cyan), inset 0 -1px 0 var(--d-cyan)
 .hostbar b { color: var(--d-gold); }
 .me-menu { display: flex; justify-content: flex-end; gap: 6px; margin-top: -8px; }
 .me-menu button { font-size: 13px; padding: 5px 10px; }
+#btnShield.on { color: var(--gold); border-color: var(--gold); }
 /* ---------- 픽창 테마(사이트 전체) */
 body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
 .panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
@@ -478,7 +479,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
         <li><b>MMR:</b> 팀 평균끼리 비교해 이길 확률을 계산하고, 예상보다 잘하면 많이 오르고 못하면 많이 내려갑니다. 비등한 판은 ±16 정도입니다.</li>
         <li><b>배치:</b> 처음 10판은 1.5배로 크게 움직여 빨리 자리를 찾습니다.</li>
         <li><b>연승가속 / 연패가속:</b> 세트 n연승 중 또 이기면 ×(1 + 0.1n), n연패 중 또 지면 같은 배율로 더 깎입니다. 2연속부터 적용합니다.</li>
-        <li><b>용맹의 방패:</b> 선호 포지션이 아닌 곳에 배정돼 지면 감점이 절반입니다. 팀 카드에 <b>방패</b>로 표시됩니다.</li>
+        <li><b>용맹의 방패:</b> 선호 포지션이 아닌 곳에 배정돼 지면 감점이 절반입니다. 팀 카드에 <b>방패</b>로 표시됩니다. 시리즈 화면의 <b>용맹의 방패 ON/OFF</b>로 방장이 끌 수 있고, 다음 기록부터 적용됩니다.</li>
         <li><b>순위</b> 탭의 전적·연속·승률은 시리즈 기준, 세트 전적은 따로 보여 줍니다.</li>
       </ul>
 
@@ -817,7 +818,7 @@ function pentaGains(m, pairs) {
 function sameSeries(a, b) {
   if (!a || !b) return !a && !b;
   const ids = [...(a.blue || []), ...(a.red || [])];
-  return a.sid === b.sid && !!a.done === !!b.done && winsOf(a) === winsOf(b)
+  return a.sid === b.sid && !!a.done === !!b.done && winsOf(a) === winsOf(b) && !!a.noShield === !!b.noShield
     && a.score.blue === b.score.blue && a.score.red === b.score.red
     && (a.blue || []).join() === (b.blue || []).join() && (a.red || []).join() === (b.red || []).join()
     && ids.every(id => (a.roles || {})[id] === (b.roles || {})[id]);
@@ -926,7 +927,9 @@ const repo = {
     const apply = c => {
       if (c && c.host && c.host !== state.me && !takeover) throw { code: 'host' };
       const n = mutate(c);
-      return n ? { ...n, host: takeover ? state.me : n.host || (c && c.sid === n.sid && c.host) || state.me } : n;
+      // 새 시리즈의 방패 기본값은 이 기기에서 마지막으로 고른 값(localStorage mmr-shield)
+      const fresh = n && !(c && c.sid === n.sid);
+      return n ? { ...n, host: takeover ? state.me : n.host || (c && c.sid === n.sid && c.host) || state.me, ...(fresh && n.noShield === undefined ? { noShield: lsGet('mmr-shield') === 'off' } : {}) } : n;
     };
     if (this.kind === 'firebase') {
       const sref = this.db.doc('series/current');
@@ -987,7 +990,7 @@ const repo = {
     if (s.host && s.host !== state.me) throw { code: 'host' };
     const played = s.score.blue + s.score.red, game = played + 1, ts = Date.now();
     const calc = m => {
-      const r = computeDeltas(s.blue, s.red, winner, m, s.roles);
+      const r = computeDeltas(s.blue, s.red, winner, m, s.noShield ? {} : s.roles);
       for (const [pid, g] of Object.entries(bonus)) if (pid in r.deltas) r.deltas[pid] += g;
       return r;
     };
@@ -1111,8 +1114,8 @@ const repo = {
 };
 function seriesDoc(x, ts) {
   if (!x) return { active: false, ts };
-  const { sid, blue, red, roles, key, score, done, winner, host } = x;
-  return { sid, blue, red, roles, key: key || '', score, wins: winsOf(x), done: !!done, winner: winner || null, host: host || null, active: true, ts };
+  const { sid, blue, red, roles, key, score, done, winner, host, noShield } = x;
+  return { sid, blue, red, roles, key: key || '', score, wins: winsOf(x), done: !!done, winner: winner || null, host: host || null, noShield: !!noShield, active: true, ts };
 }
 
 // ---------- 화면 상태
@@ -1235,7 +1238,7 @@ function renderTeams() {
   if (!s || [...s.blue, ...s.red].some(id => !map[id])) { res.hidden = true; return; }
   const rb = teamAvg(s.blue, map), rr = teamAvg(s.red, map);
   const played = s.score.blue + s.score.red;
-  const offCount = [...s.blue, ...s.red].filter(id => (map[id].pos || []).length && !map[id].pos.includes(s.roles[id])).length;
+  const offCount = s.noShield ? 0 : [...s.blue, ...s.red].filter(id => (map[id].pos || []).length && !map[id].pos.includes(s.roles[id])).length;
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
   // 같은 팀 포지션 교환은 시리즈 중 언제나, 상대 팀과 선수 교환은 1세트 전에만
   const hostP = s.host && map[s.host], isHost = !s.host || s.host === state.me;
@@ -1248,7 +1251,7 @@ function renderTeams() {
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
-      const p = map[id], r = s.roles[id], off = isOffRole(p, r), pos = p.pos || [];
+      const p = map[id], r = s.roles[id], off = !s.noShield && isOffRole(p, r), pos = p.pos || [];
       const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
       const tags = `${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
       return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}${id === state.me ? ' me' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
@@ -1280,6 +1283,7 @@ function renderTeams() {
       <button id="btnReplaySeries" ${dis} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일 여러 개">리플레이로 기록</button>
     </div>
     ${replayPlanHtml(s)}
+    <div class="row" style="justify-content:center"><button class="small${s.noShield ? '' : ' on'}" id="btnShield" ${dis} title="용맹의 방패: 선호 밖 포지션에 배정된 선수가 지면 감점 절반. 끄면 모두 같은 감점">용맹의 방패 ${s.noShield ? 'OFF' : 'ON'}</button></div>
     <div class="actions two">
       <button class="blue" data-win="blue" ${dis}>블루 승리</button>
       <button class="red" data-win="red" ${dis}>레드 승리</button>
@@ -1814,6 +1818,7 @@ $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnReplayRecord') return recordReplayPlan();
   if (e.target.id === 'btnReplayFixTeams') return fixReplayTeams();
   const sw = e.target.closest('[data-swap]'); if (sw) return swapPick(sw.dataset.swap);
+  if (e.target.id === 'btnShield') { const s = repo.series, off = !s.noShield; try { localStorage.setItem('mmr-shield', off ? 'off' : 'on'); } catch (e) {} if (await run(() => repo.updateSeries(s, c => ({ ...c, noShield: off })))) toast(`용맹의 방패 ${off ? 'OFF' : 'ON'}`); return; }
   if (e.target.id === 'btnBo') { const s = repo.series; if (s.score.blue + s.score.red === 0 && !s.done) { const w = winsOf(s) === 3 ? 2 : 3; try { localStorage.setItem('mmr-bo', String(w)); } catch (e) {} run(() => repo.updateSeries(s, c => ({ ...c, wins: w }))); } return; }
   if (e.target.id === 'btnClose') { run(() => repo.updateSeries(repo.series, () => (null))); return; }
   if (e.target.id === 'btnAgain') {
