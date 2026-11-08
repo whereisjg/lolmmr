@@ -321,6 +321,12 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .fname { max-width: 100%; font-size: 10px; color: var(--d-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mpic { display: inline-block; width: 20px; height: 20px; vertical-align: -5px; margin-right: 4px; overflow: hidden; border: 1px solid var(--line-gold); }
 .mpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.posi { width: 14px; height: 14px; vertical-align: -2px; display: inline-block; }
+.dspells i .posi { width: 13px; height: 13px; vertical-align: 0; }
+.dpf .posi { width: 18px; height: 18px; vertical-align: 0; opacity: 0.6; }
+.dpf.on .posi { opacity: 1; }
+.match .role { min-width: 22px; }
+.match .role .posi { width: 16px; height: 16px; }
 /* ---------- 픽창 테마(사이트 전체) */
 body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
 .panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
@@ -1178,7 +1184,7 @@ function renderTeams() {
       const p = map[id], r = s.roles[id], off = isOffRole(p, r), pos = p.pos || [];
       const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
       const tags = `${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
-      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? POS_LABEL[pos[i]].slice(0, 1) : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
+      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="dteam ${side}"><div class="dhead"><span>${side === 'blue' ? '블루' : '레드'}</span><span class="num">평균 ${Math.round(avg)}</span></div>${rows}
@@ -1222,6 +1228,12 @@ function champPic(name) {
   if (!DD || !DD.ver) return '';
   const id = DD.champ[name] ? name : Object.keys(DD.champ).find(k => DD.champ[k] === name);
   return id ? `<img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/champion/${encodeURIComponent(id)}.png" alt="" loading="lazy">` : '';
+}
+// 포지션 아이콘(CommunityDragon, 롤 클라이언트 라인 아이콘). 못 받으면 글자 첫 자로
+const POS_ICON = { top: 'top', jungle: 'jungle', mid: 'middle', adc: 'bottom', support: 'utility' };
+function posIcon(k) {
+  if (!POS_ICON[k]) return '';
+  return `<img class="posi" src="https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions/icon-position-${POS_ICON[k]}.png" alt="${POS_LABEL[k]}" title="${POS_LABEL[k]}" onerror="this.replaceWith(document.createTextNode('${POS_LABEL[k].slice(0, 1)}'))">`;
 }
 function mpicHtml(c) { const p = champPic(c); return p ? `<span class="mpic" title="${esc(c)}">${p}</span>` : ''; }
 function fearlessHtml(s) {
@@ -1315,7 +1327,7 @@ function renderHistory() {
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
     const pic = st && st.champion ? champPic(st.champion) : '';
-    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${pic ? `<span class="mpic" title="${esc(st.champion)}">${pic}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
+    return `<li><span class="nm">${r ? `<span class="role">${posIcon(r)}</span>` : ''}${pic ? `<span class="mpic" title="${esc(st.champion)}">${pic}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
   const delCtl = m => state.confirmDel === m.id
@@ -1443,7 +1455,7 @@ function renderDraft(map, ok) {
   // 슬롯: 팀장 → 지명 순서. 지금 차례 팀의 다음 빈 칸은 '선택 중...'(남은 시간 숫자 표시)
   const pickNo = {}, ini = id => face(map[id]), posOf = id => map[id].pos || [];
   d.picks.forEach((id, i) => { pickNo[id] = i + 1; });
-  const spells = id => `<span class="dspells">${[0, 1].map(i => `<i>${id && posOf(id)[i] ? POS_LABEL[posOf(id)[i]].slice(0, 1) : ''}</i>`).join('')}</span>`;
+  const spells = id => `<span class="dspells">${[0, 1].map(i => `<i>${id && posOf(id)[i] ? posIcon(posOf(id)[i]) : ''}</i>`).join('')}</span>`;
   const slots = side => Array.from({ length: half }, (_, k) => {
     const id = t[side][k], cur = !id && left.length && side === turn && k === t[side].length;
     const sub = id ? `${id === d.cap[side] ? '팀장' : `${pickNo[id]}픽`}${posOf(id).length ? ' · ' + POS_LABEL[posOf(id)[0]] : ''}` : cur ? '선택 중...' : `${k + 1}번${k ? '' : ' 팀장'}`;
@@ -1461,7 +1473,7 @@ function renderDraft(map, ok) {
     <div class="dbar"><i id="dBar"></i></div><div class="dcount num" data-dt></div></div>
     <div class="dboard">${side('blue')}
       <div class="dmid"><div class="dtools">
-        <span class="dposf">${POS_KEYS.map(k => `<button class="dpf${pf === k ? ' on' : ''}" data-dpos="${k}" title="${POS_LABEL[k]}">${POS_LABEL[k].slice(0, 1)}</button>`).join('')}</span>
+        <span class="dposf">${POS_KEYS.map(k => `<button class="dpf${pf === k ? ' on' : ''}" data-dpos="${k}" title="${POS_LABEL[k]}">${posIcon(k)}</button>`).join('')}</span>
         <select id="dSort" aria-label="정렬"><option value="mmr"${sort === 'mmr' ? ' selected' : ''}>MMR 기준 정렬</option><option value="name"${sort === 'name' ? ' selected' : ''}>이름 기준 정렬</option></select>
         <input id="dSearch" type="search" placeholder="검색" value="${esc(d.q || '')}">
       </div>
