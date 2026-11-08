@@ -1470,7 +1470,7 @@ function renderDraft(map, ok) {
   const pool = left.filter(id => !pf || posOf(id).includes(pf) || !posOf(id).length)
     .sort(sort === 'name' ? (a, b) => map[a].name.localeCompare(map[b].name, 'ko') : (a, b) => map[b].mmr - map[a].mmr);
   el.hidden = false;
-  // 차례 타이머(DRAFT_SEC초, 표시만. 0이 돼도 자동 지명 없음): 지명 수가 바뀌면 새로 시작
+  // 차례 타이머(DRAFT_SEC초, 0이 되면 tickDraft가 남은 선수 중 무작위 자동 지명): 지명 수가 바뀌면 새로 시작
   if (d.tKey !== used.size) { d.tKey = used.size; d.t0 = Date.now(); }
   el.innerHTML = `<div class="dbanner"><div class="dtitle">${left.length ? (capping ? `${ko[turn]} 팀장을 선택하세요!` : '선수를 선택하세요!') : '드래프트 완료!'}</div>
     <div class="dbar"><i id="dBar"></i></div><div class="dcount num" data-dt></div></div>
@@ -1491,6 +1491,14 @@ function tickDraft() {
   const d = state.draft, b = $('dBar'); if (!d || !b) return;
   const sec = Math.max(0, DRAFT_SEC - Math.floor((Date.now() - d.t0) / 1000));
   document.querySelectorAll('#draft [data-dt]').forEach(x => { x.textContent = sec; }); b.style.width = `${sec / DRAFT_SEC * 100}%`;
+  // 시간 초과: 남은 선수 중 무작위 한 명을 지금 차례(팀장 선정 포함)에 넣는다. 지명 수가 바뀌면 renderDraft가 타이머를 새로 시작
+  if (sec === 0) {
+    const t = draftTeams(d), used = new Set([...t.blue, ...t.red]), left = [...state.selected].filter(id => !used.has(id));
+    if (!left.length) return;
+    const id = left[Math.floor(Math.random() * left.length)], name = (pmap()[id] || {}).name;
+    if (!d.cap.blue) d.cap.blue = id; else if (!d.cap.red) d.cap.red = id; else d.picks.push(id);
+    toast(`시간 초과: ${name} 자동 지명`); renderTeams();
+  }
 }
 function filterDraft() {
   const q = ((state.draft || {}).q || '').trim().toLowerCase();
