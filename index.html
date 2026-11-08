@@ -121,6 +121,7 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .team li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .team li .num { font-size: 13px; color: var(--muted); white-space: nowrap; }
 /* 토너먼트 드래프트: 챔피언 선택 화면 구성(위 제목·타이머, 가운데 지명 그리드, 양옆 팀 슬롯) */
+#result { color: var(--d-ink); border: 1px solid var(--d-gold-dim); border-radius: 4px; background: radial-gradient(ellipse at 50% 0%, var(--d-bg2), var(--d-bg) 70%); }
 #draft { margin-top: 12px; border: 1px solid var(--d-gold-dim); border-radius: 4px; padding: 14px 12px; color: var(--d-ink);
   background: radial-gradient(ellipse at 50% 0%, var(--d-bg2), var(--d-bg) 70%); }
 #draft .muted { color: var(--d-muted); }
@@ -139,6 +140,13 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .dteam.red .dslot { flex-direction: row-reverse; text-align: right; border-left: 0; border-right: 4px solid transparent; }
 .dslot.cur { background: linear-gradient(90deg, var(--d-gold-dim), transparent); border-left-color: var(--d-gold); }
 .dteam.red .dslot.cur { background: linear-gradient(270deg, var(--d-gold-dim), transparent); border-right-color: var(--d-gold); }
+.dslot.swappable { cursor: pointer; }
+.dslot.swappable:hover:not(.cur) { background: var(--d-tile); }
+.dlab.off { color: var(--gold); }
+.dswing { font-size: 12px; color: var(--d-muted); padding: 6px 4px; text-align: center; }
+#result .dbanner .b { color: var(--d-blue); } #result .dbanner .r { color: var(--d-red); }
+#result .dmid { gap: 10px; justify-content: center; }
+#result .dmid .row { flex-wrap: wrap; }
 .dspells { display: flex; flex-direction: column; gap: 2px; flex: none; }
 .dspells i { width: 18px; height: 18px; display: grid; place-items: center; font-style: normal; font-size: 10px; font-weight: 700; background: var(--d-tile); border: 1px solid var(--d-gold-dim); color: var(--d-gold); }
 .dslot .dav { flex: none; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; font-weight: 700;
@@ -1150,32 +1158,29 @@ function renderTeams() {
   if (state.subOut && !s.blue.includes(state.subOut) && !s.red.includes(state.subOut)) state.subOut = null;
   if (state.subIn && (!map[state.subIn] || s.blue.includes(state.subIn) || s.red.includes(state.subIn))) state.subIn = null;
   if (!canSwap) state.swapId = null;
+  // 팀 슬롯: 드래프트(.dteam/.dslot)와 같은 픽창 모양. 누르면 교환(data-swap)
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
-      const p = map[id], r = s.roles[id], off = isOffRole(p, r);
-      const tag = canSwap ? ` data-swap="${esc(id)}" class="swappable${state.swapId === id ? ' swap-on' : ''}" tabindex="0"` : '';
-      return `<li${tag.replace('class="', 'class="slot ') || ' class="slot"'}><span class="av" aria-hidden="true">${face(p)}</span><span class="who"><span class="role${off ? ' off' : ''}" title="${off ? '용맹의 방패: 선호 밖 배정, 지면 감점 절반' : ''}">${POS_LABEL[r]}</span><span class="nm">${royalName(id, p.name)}${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승가속' : '연패가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}</span></span><span class="num">${p.mmr}</span></li>`;
+      const p = map[id], r = s.roles[id], off = isOffRole(p, r), pos = p.pos || [];
+      const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
+      const tags = `${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '가속' : '가속'} ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
+      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? POS_LABEL[pos[i]].slice(0, 1) : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
-    return `<div class="team ${side}">
-      <div class="team-head"><span class="side">${side === 'blue' ? 'BLUE' : 'RED'}</span><span class="avg">평균 ${Math.round(avg)}</span></div>
-      <ul>${rows}</ul>
-      ${s.done ? '' : `<span class="swing" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</span>`}
-    </div>`;
+    return `<div class="dteam ${side}"><div class="dhead"><span>${side === 'blue' ? '블루' : '레드'}</span><span class="num">평균 ${Math.round(avg)}</span></div>${rows}
+      ${s.done ? '' : `<div class="dswing num" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</div>`}</div>`;
   };
   res.hidden = false;
   const dis = state.busy ? 'disabled' : '';
   res.innerHTML = `
-    <div class="series">
-      <span class="label">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : played ? `${boLabel(winsOf(s))} · ${played + 1}세트` : `<button class="small" id="btnBo" ${dis} title="1세트 전에만 바꿀 수 있습니다">${boLabel(winsOf(s))} ⇄</button> · 1세트`}</span>
-      <span class="score num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></span>
-    </div>
+    <div class="dbanner"><div class="dtitle">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : played ? `${boLabel(winsOf(s))} · ${played + 1}세트` : `<button class="small" id="btnBo" ${dis} title="1세트 전에만 바꿀 수 있습니다">${boLabel(winsOf(s))} ⇄</button> · 1세트`}</div>
+      <div class="dcount num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></div></div>
     <div class="odds">
       <div class="odds-labels"><span class="b">블루 ${pB}%</span><span class="muted">평균 차이 ${Math.abs(rb - rr).toFixed(1)}${offCount ? ` · 용맹의 방패 ${offCount}명` : ''}</span><span class="r">${100 - pB}% 레드</span></div>
       <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
     </div>
-    <div class="teams">${card('blue', s.blue, rb, eB)}${card('red', s.red, rr, 1 - eB)}</div>
+    <div class="dboard">${card('blue', s.blue, rb, eB)}<div class="dmid">
     ${s.done ? `<div class="actions two">
       <button class="primary" id="btnAgain" ${dis}>같은 팀으로 한 번 더</button>
       <button id="btnClose" ${dis}>결과 닫기</button>
@@ -1193,7 +1198,7 @@ function renderTeams() {
     </div>
     <div class="row"><select id="lateSel" aria-label="지각한 선수">${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}" ${(state.lateId || state.lateSel) === id ? 'selected' : ''}>${esc(map[id].name)}</option>`).join('')}</select><select id="lateAmt" aria-label="차감 점수">${LATE_OPTIONS.map(v => `<option value="${v}" ${(state.lateAmt || 10) === v ? 'selected' : ''}>−${v}</option>`).join('')}</select><button class="small${state.lateId ? ' danger' : ''}" id="btnLate" ${dis}>${state.lateId ? '한 번 더 누르면 차감' : `지각 −${state.lateAmt || 10}`}</button></div>
     <div class="row"><select id="subOut" aria-label="나가는 선수"><option value="" disabled ${state.subOut ? '' : 'selected'}>나가는 선수</option>${[...s.blue, ...s.red].filter(id => map[id]).map(id => `<option value="${esc(id)}" ${state.subOut === id ? 'selected' : ''}>${s.blue.includes(id) ? '블루' : '레드'} ${esc(map[id].name)}</option>`).join('')}</select><select id="subIn" aria-label="들어오는 선수"><option value="" disabled ${state.subIn ? '' : 'selected'}>들어올 선수</option>${Object.values(map).filter(p => !s.blue.includes(p.id) && !s.red.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(p => `<option value="${esc(p.id)}" ${state.subIn === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select><button class="small" id="btnSub" ${dis}>선수 교체</button></div>
-    <span class="muted">${played ? '같은 팀 선수 둘을 차례로 누르면 포지션이 바뀝니다. 팀은 시리즈가 끝날 때까지 유지되고, MMR은 세트마다 반영됩니다. ' : '선수를 누른 뒤 같은 팀 선수를 누르면 포지션이, 상대 팀 선수를 누르면 팀이 서로 바뀝니다. '}결과는 한 명만 기록하세요.</span>`}`;
+    <span class="muted">${played ? '같은 팀 선수 둘을 차례로 누르면 포지션이 바뀝니다. 팀은 시리즈가 끝날 때까지 유지되고, MMR은 세트마다 반영됩니다. ' : '선수를 누른 뒤 같은 팀 선수를 누르면 포지션이, 상대 팀 선수를 누르면 팀이 서로 바뀝니다. '}결과는 한 명만 기록하세요.</span>`}</div>${card('red', s.red, rr, 1 - eB)}</div>`;
 }
 
 function renderRanking() {
