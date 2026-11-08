@@ -1223,6 +1223,7 @@ function champPic(name) {
   const id = DD.champ[name] ? name : Object.keys(DD.champ).find(k => DD.champ[k] === name);
   return id ? `<img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/champion/${encodeURIComponent(id)}.png" alt="" loading="lazy">` : '';
 }
+function mpicHtml(c) { const p = champPic(c); return p ? `<span class="mpic" title="${esc(c)}">${p}</span>` : ''; }
 function fearlessHtml(s) {
   const games = repo.matches.filter(m => m.series === s.sid).sort((a, b) => (a.game || 0) - (b.game || 0));
   if (!games.length) return '';
@@ -1376,7 +1377,7 @@ function renderStats() {
       <div class="row between"><b>${isKing ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(map[id].name)}</span>` : esc(map[id].name)}</b><span class="muted num">${n}판 · 승률 ${pct(a.w, n)}</span></div>
       <div class="stat-line"><span class="label">K/D/A</span><span class="num">${(a.k / n).toFixed(1)} / ${(a.d / n).toFixed(1)} / ${(a.a / n).toFixed(1)}</span><span class="num kda-r">KDA ${kdaRatio(a).toFixed(2)}</span></div>
       <div class="stat-line"><span class="label">평균</span><span class="num">CS ${k1(avg(a, 'cs'))} · 골드 ${k1(avg(a, 'gold'))} · 딜 ${k1(avg(a, 'dmg'))}</span></div>
-      ${top.length ? `<div class="champs">${top.map(([c, x]) => `<span class="champ">${esc(c)} <span class="num muted">${x.n}판 ${pct(x.w, x.n)}</span></span>`).join('')}</div>` : ''}
+      ${top.length ? `<div class="champs">${top.map(([c, x]) => `<span class="champ">${mpicHtml(c)}${esc(c)} <span class="num muted">${x.n}판 ${pct(x.w, x.n)}</span></span>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
   const ranks = Object.entries(champs).sort((x, y) => y[1].n - x[1].n || y[1].w - x[1].w).slice(0, 10);
@@ -1385,7 +1386,7 @@ function renderStats() {
     <h2>많이 나온 챔피언</h2>
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>챔피언</th><th class="r">판</th><th class="r">승률</th></tr></thead>
-      <tbody>${ranks.map(([c, x], i) => `<tr><td class="rank">${i + 1}</td><td>${esc(c)}</td><td class="r num">${x.n}</td><td class="r num">${pct(x.w, x.n)}</td></tr>`).join('')}</tbody>
+      <tbody>${ranks.map(([c, x], i) => `<tr><td class="rank">${i + 1}</td><td>${mpicHtml(c)}${esc(c)}</td><td class="r num">${x.n}</td><td class="r num">${pct(x.w, x.n)}</td></tr>`).join('')}</tbody>
     </table></div>`;
 }
 function renderAll() { renderHeader(); renderTeams(); renderRanking(); renderHistory(); renderPlayers(); }
