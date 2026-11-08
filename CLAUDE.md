@@ -57,7 +57,7 @@
 ## 화면 구성
 - 순위 1위(`kingId`: 한 세트 이상 뛴 선수 중 MMR 최고, 동점은 가나다순)는 모든 화면에서 황금 이름(`royalName`: 왕관 + 반짝이는 이름). 팀 짜기 칩(`.royal-chip`), 팀 카드, 기록 카드, 선수 목록, 순위 줄, 통계 카드
 - 딱지(배치·비겁자·방패·연승가속/연패가속·펜타)는 `data-tip`에 설명. 누르면 말풍선(`.tip-pop`, document 캡처 클릭)으로 표시, 바깥 클릭·스크롤·탭 이동 시 닫힘. 새 딱지도 `data-tip`으로
-- 상단 `음악` 버튼(`#btnMusic`): YouTube `MUSIC_ID` 플레이어(`#music` iframe, `enablejsapi=1`, 로드 후 postMessage `setVolume` `MUSIC_VOL`=50)를 켜고 끔. `#btnMusicFold` 접기는 플레이어를 1px로 숨겨 소리 유지. 탭 이동해도 유지
+- 상단 `음악` 버튼(`#btnMusic`): YouTube `MUSIC_ID` 플레이어(`#music` iframe, `enablejsapi=1`, 로드 후 postMessage `setVolume` `MUSIC_VOL`=20)를 켜고 끔. `#btnMusicFold` 접기는 플레이어를 1px로 숨겨 소리 유지. 탭 이동해도 유지
 - 탭은 hash 라우팅: `#teams`, `#ranking`, `#history`, `#stats`, `#players`. 상단 `사용법` 버튼 → `#help`(탭 줄에는 없음). 기능을 바꾸면 사용법 문구도 같이 고칠 것
 - 지각: 진행 중 시리즈 화면 승리 버튼 아래 `#lateSel` + `#lateAmt`(`LATE_OPTIONS` 10/20/30, 기본 10) + `#btnLate`(2단계 확인) → 즉시 MMR −점수, `lates` +1, `lateLog`에 추가. 경기 기록과 무관(기록 탭에 안 남음). 취소는 선수 편집 패널 `지각 1회 취소`(마지막 점수만큼 +, `lateLog` 없으면 30으로 간주). 순위·선수 목록에 빨간 `지각 n` 딱지(`lateTag`, data-tip)
 - 카톡 글 붙여넣기(`#pasteBox`, `parsePaste`): 공백·쉼표·줄바꿈으로 나눈 단어 중 등록된 선수 이름이나 AKA(`aliases`, 편집 패널)과 같은 것만 골라 선택을 교체(성+이름 `김강래`→강래, `@멘션`은 카톡 이름 안에 포함된 가장 긴 이름. 후보가 여럿이면 인정 안 함. @멘션이 있으면 @단어만 없음으로 알림)(최대 10명, 시리즈 중 불가). 없는 한글/영문 2글자 이상 단어는 `선수 목록에 없음`으로 알리고, 아래 `찾지 못한 이름`(`state.pasteUnknown`, `renderPasteMap`)에서 선수를 고르면 그 선수 `aliases`에 추가 + 선택

@@ -1481,7 +1481,7 @@ $('draft').addEventListener('input', e => { if (e.target.id === 'dSearch' && sta
 $('draft').addEventListener('change', e => { if (e.target.id === 'dSort' && state.draft) { state.draft.sort = e.target.value; renderTeams(); } });
 setInterval(tickDraft, 1000);
 // BGM(YouTube): 상단 `음악` 버튼으로 켜고 끈다. `접기`는 플레이어만 숨기고 소리는 유지(display:none 대신 1px로 줄임). 탭을 옮겨도 계속 재생
-const MUSIC_ID = 'cciyYbPeCR0', MUSIC_VOL = 50;
+const MUSIC_ID = 'cciyYbPeCR0', MUSIC_VOL = 20;
 function setMusicFold(fold) {
   $('music').style.cssText = fold ? 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none' : 'margin-bottom:8px';
   $('btnMusicFold').textContent = fold ? '펼치기' : '접기';
