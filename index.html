@@ -319,6 +319,8 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .fpic img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); opacity: 0.6; }
 .fpic::after { content: ''; position: absolute; inset: 0; background: linear-gradient(45deg, transparent 47%, var(--d-red) 47%, var(--d-red) 53%, transparent 53%); }
 .fname { max-width: 100%; font-size: 10px; color: var(--d-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mpic { display: inline-block; width: 20px; height: 20px; vertical-align: -5px; margin-right: 4px; overflow: hidden; border: 1px solid var(--line-gold); }
+.mpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* ---------- 픽창 테마(사이트 전체) */
 body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
 .panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
@@ -1311,7 +1313,8 @@ function renderHistory() {
     const d = (m.deltas || {})[id] || 0;
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
-    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
+    const pic = st && st.champion ? champPic(st.champion) : '';
+    return `<li><span class="nm">${r ? `<span class="role">${POS_LABEL[r]}</span>` : ''}${pic ? `<span class="mpic" title="${esc(st.champion)}">${pic}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
   const delCtl = m => state.confirmDel === m.id
