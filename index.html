@@ -232,7 +232,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 <div class="wrap">
   <header class="top">
     <div class="brand"><h1>내전 MMR 밸런서</h1><span class="num">5V5</span></div>
-    <div class="row"><button class="pill" id="btnMusic" aria-pressed="false">음악</button><a class="pill help-link" href="#help">사용법</a><span class="pill" id="storePill">불러오는 중</span></div>
+    <div class="row"><button class="pill" id="btnMusic" aria-pressed="false">음악</button><button class="pill" id="btnMusicFold" hidden>접기</button><a class="pill help-link" href="#help">사용법</a><span class="pill" id="storePill">불러오는 중</span></div>
   </header>
   <div id="music" hidden style="margin-bottom:8px"></div>
 
@@ -1302,13 +1302,19 @@ function renderDraft(map, ok) {
     <div class="chips">${left.map(id => `<button class="chip" data-draft="${esc(id)}">${royalName(id, map[id].name)}<span class="num">${map[id].mmr}</span></button>`).join('')}</div>` : ''}
     <div class="row" style="margin-top:10px"><button class="primary" id="btnDraftGo"${!left.length && !state.busy ? '' : ' disabled'}>이 팀으로 시작</button><button id="btnDraftBack"${used.size ? '' : ' disabled'}>되돌리기</button><button id="btnDraftCancel">취소</button></div>`;
 }
-// BGM(YouTube): 상단 `음악` 버튼으로 켜고 끈다. 탭을 옮겨도 계속 재생, 자동 재생이 막히면 플레이어를 직접 누른다
+// BGM(YouTube): 상단 `음악` 버튼으로 켜고 끈다. `접기`는 플레이어만 숨기고 소리는 유지(display:none 대신 1px로 줄임). 탭을 옮겨도 계속 재생
 const MUSIC_ID = 'cciyYbPeCR0';
+function setMusicFold(fold) {
+  $('music').style.cssText = fold ? 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none' : 'margin-bottom:8px';
+  $('btnMusicFold').textContent = fold ? '펼치기' : '접기';
+}
 $('btnMusic').addEventListener('click', () => {
-  const m = $('music'), on = m.hidden;
-  m.hidden = !on; $('btnMusic').setAttribute('aria-pressed', on);
+  const m = $('music'), on = !m.firstChild;
+  $('btnMusic').setAttribute('aria-pressed', on); $('btnMusicFold').hidden = !on;
+  m.hidden = !on; setMusicFold(false);
   m.innerHTML = on ? `<iframe style="width:100%;max-width:320px;aspect-ratio:16/9;border:0;border-radius:8px" allow="autoplay; encrypted-media" allowfullscreen src="https://www.youtube.com/embed/${MUSIC_ID}?autoplay=1&loop=1&playlist=${MUSIC_ID}"></iframe>` : '';
 });
+$('btnMusicFold').addEventListener('click', () => setMusicFold($('btnMusicFold').textContent === '접기'));
 $('draft').addEventListener('click', e => {
   const d = state.draft; if (!d) return;
   const btn = e.target.closest('button'); if (!btn) return;
