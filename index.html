@@ -296,6 +296,10 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .cav img, .av img, .dav img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
 .cav, .av, .dav { overflow: hidden; }
 #editFace { flex: none; width: 36px; height: 36px; display: grid; place-items: center; font-weight: 700; border: 1px solid var(--line-gold); background: var(--d-tile); }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; }
+.icon-grid button { padding: 0; aspect-ratio: 1; min-height: 0; border: 1px solid var(--line-gold); }
+.icon-grid button.on { border: 2px solid var(--gold); box-shadow: 0 0 8px var(--gold); }
+.icon-grid img { width: 100%; height: 100%; display: block; object-fit: cover; }
 /* ---------- 픽창 테마(사이트 전체) */
 body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
 .panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
@@ -388,7 +392,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
         <li><b>선수</b> 탭에서 본인 이름의 <b>편집</b>을 누릅니다.</li>
         <li><b>선호 포지션</b>을 최대 2개 고릅니다. 먼저 고른 쪽이 주 포지션입니다. 주 포지션만 고르면 순위에 빨간 <b>비겁자</b> 딱지가 붙습니다.</li>
         <li><b>롤 닉네임</b>을 넣습니다. 여러 계정이면 쉼표로 구분하고 #태그는 빼도 됩니다. 리플레이·결과창 자동 연결에 꼭 필요합니다.</li>
-        <li><b>프로필 사진</b>에 좋아하는 챔피언 이름을 넣으면 그 초상화가 칩·팀 카드·드래프트에 나옵니다. 비우면 이름 첫 글자.</li>
+        <li><b>프로필 사진</b>에 좋아하는 챔피언 이름을 넣거나, 아래 <b>소환사 아이콘 검색</b>에서 팀 이름(T1, Gen.G 등)을 찾아 누르면 칩·팀 카드·드래프트에 나옵니다. 비우면 이름 첫 글자.</li>
       </ol>
 
       <h3>팀 짜기</h3>
@@ -461,6 +465,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
       <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
       <label class="field"><span>롤 닉네임 (여러 계정이면 쉼표로 구분, #태그는 빼도 됨)</span><input id="editRiot" maxlength="200" autocomplete="off" placeholder="예: Hide on bush, 부캐닉"></label>
       <label class="field"><span>프로필 사진 (챔피언 이름, 비우면 이름 첫 글자)</span><span class="row" style="flex-wrap:nowrap"><span class="cav" id="editFace"></span><input id="editIcon" list="champList" maxlength="30" autocomplete="off" placeholder="예: 아리" style="flex:1"></span><datalist id="champList"></datalist></label>
+      <div class="field"><span>또는 소환사 아이콘 검색 (예: T1, Gen.G, 월드)</span><input id="iconSearch" maxlength="30" autocomplete="off" placeholder="팀 이름 검색"><div id="iconResults" class="icon-grid"></div></div>
       <label class="field"><span>AKA (카톡 붙여넣기용, 쉼표로 구분)</span><input id="editAlias" maxlength="100" autocomplete="off" placeholder="예: 만두"></label>
       <div class="row between">
         <div class="row">
@@ -1717,7 +1722,10 @@ async function shrink(file) {
 // 프로필 사진: players.icon = Data Dragon 챔피언 id(예: 'Ahri'). 없으면 이름 첫 글자
 let DD = null;
 function face(p) {
-  if (p && p.icon && DD && DD.ver) return `<img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/champion/${encodeURIComponent(p.icon)}.png" alt="" loading="lazy">`;
+  if (p && p.icon && DD && DD.ver) {
+    const pi = /^pi:(\d+)$/.exec(p.icon);
+    return `<img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/${pi ? `profileicon/${pi[1]}` : `champion/${encodeURIComponent(p.icon)}`}.png" alt="" loading="lazy">`;
+  }
   return esc([...((p && p.name) || '?')][0]);
 }
 lolNames().then(d => { if (d && d.ver) { DD = d; fillChampList(); renderAll(); if (state.draft) renderTeams(); } });
@@ -1726,7 +1734,9 @@ function fillChampList() {
   dl.innerHTML = Object.entries(DD.champ).sort((a, b) => a[1].localeCompare(b[1], 'ko')).map(([, n]) => `<option value="${esc(n)}">`).join('');
 }
 function champId(v) {
-  v = (v || '').trim(); if (!v || !DD) return '';
+  v = (v || '').trim(); if (!v) return '';
+  const pi = /^아이콘 (\d+)$/.exec(v); if (pi) return 'pi:' + pi[1];
+  if (!DD) return null;
   const e = Object.entries(DD.champ).find(([id, n]) => n === v || id.toLowerCase() === v.toLowerCase());
   return e ? e[0] : null;
 }
@@ -2078,7 +2088,7 @@ $('playerList').addEventListener('click', e => {
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false;
   $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
-  $('editIcon').value = p.icon && DD ? DD.champ[p.icon] || p.icon : ''; $('editFace').innerHTML = face(p);
+  $('editIcon').value = !p.icon ? '' : p.icon.startsWith('pi:') ? '아이콘 ' + p.icon.slice(3) : (DD && DD.champ[p.icon]) || p.icon; $('iconSearch').value = ''; $('iconResults').innerHTML = ''; $('editFace').innerHTML = face(p);
   renderEditLate(p); renderMmrLog(p);
   $('editPanel').hidden = false; renderPlayers();
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
@@ -2126,6 +2136,37 @@ $('btnEditSave').addEventListener('click', async () => {
   if (await run(() => repo.patchPlayer(id, q => ({ ...patch, ...(q.mmr !== mmr ? { mmrLog: mmrLogAdd(q, 'manual', mmr) } : {}) })))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('editIcon').addEventListener('input', () => { const id = champId($('editIcon').value); $('editFace').innerHTML = face({ name: $('editName').value, icon: id || '' }); });
+// 소환사 아이콘 이름 목록: CommunityDragon(팬 운영, 한국어 제목). 그림은 Data Dragon profileicon. 처음 검색할 때 한 번 받음
+let ICONS = null;
+async function iconList() {
+  if (ICONS) return ICONS;
+  try {
+    const j = await (await fetch('https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/ko_kr/v1/summoner-icons.json')).json();
+    ICONS = j.filter(x => x.id > 0 && x.title).map(x => ({ id: x.id, t: x.title })).sort((a, b) => b.id - a.id);
+  } catch (e) { ICONS = null; }
+  return ICONS;
+}
+let iconTimer = 0;
+$('iconSearch').addEventListener('input', () => {
+  clearTimeout(iconTimer);
+  iconTimer = setTimeout(async () => {
+    const q = $('iconSearch').value.trim().toLowerCase(), box = $('iconResults');
+    if (q.length < 2) { box.innerHTML = ''; return; }
+    if (!DD) { box.innerHTML = '<span class="muted">아이콘 서버에 연결하지 못했습니다.</span>'; return; }
+    box.innerHTML = '<span class="muted">불러오는 중...</span>';
+    const list = await iconList();
+    if (!list) { box.innerHTML = '<span class="muted">아이콘 목록을 불러오지 못했습니다.</span>'; return; }
+    if ($('iconSearch').value.trim().toLowerCase() !== q) return;
+    const hit = list.filter(x => x.t.toLowerCase().includes(q)).slice(0, 60);
+    box.innerHTML = hit.length ? hit.map(x => `<button type="button" data-pi="${x.id}" title="${esc(x.t)}"><img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/profileicon/${x.id}.png" alt="${esc(x.t)}" loading="lazy" onerror="this.parentNode.remove()"></button>`).join('') : '<span class="muted">결과가 없습니다.</span>';
+  }, 250);
+});
+$('iconResults').addEventListener('click', e => {
+  const b = e.target.closest('[data-pi]'); if (!b) return;
+  $('editIcon').value = '아이콘 ' + b.dataset.pi;
+  $('editFace').innerHTML = face({ name: $('editName').value, icon: 'pi:' + b.dataset.pi });
+  $('iconResults').querySelectorAll('[data-pi]').forEach(x => x.classList.toggle('on', x === b));
+});
 $('btnEditDelete').addEventListener('click', async () => {
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
   const id = state.editId, name = $('editName').value;
