@@ -425,7 +425,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
     <div class="panel help">
       <div class="row between"><h2>사용법</h2><a href="#teams" class="small-link">팀 짜기로 돌아가기</a></div>
 
-      <p>사이트에 들어오면 <b>내 이름</b>을 누릅니다(이름 없이 보려면 <b>게스트</b>). 경기를 기록하거나 지울 때 누가 했는지 남습니다. 위쪽 <b>나:</b> 버튼으로 바꿀 수 있습니다.</p>
+      <p>사이트에 들어오면 <b>내 이름</b>을 누릅니다(이름 없이 보려면 <b>게스트</b>). 경기를 기록하거나 지울 때 누가 했는지 남습니다. 위쪽 내 이름 버튼으로 바꿀 수 있습니다.</p>
       <h3>처음 한 번</h3>
       <ol>
         <li><b>선수</b> 탭에서 본인 이름의 <b>편집</b>을 누릅니다.</li>
@@ -1152,7 +1152,7 @@ state.me = ssGet('mmr-me') || null;
 function meName() { const p = state.me && state.me !== 'guest' && pmap()[state.me]; return p ? p.name : ''; }
 function renderWhoami() {
   const el = $('whoami'), b = $('btnMe');
-  b.textContent = meName() ? `나: ${meName()}` : state.me === 'guest' ? '게스트' : '이름 선택';
+  b.textContent = meName() ? meName() : state.me === 'guest' ? '게스트' : '이름 선택';
   const show = state.whoOpen || (!state.me && repo.mode !== 'loading' && repo.players.length > 0);
   el.hidden = !show; document.body.classList.toggle('who-open', show);
   if (!show) return;
