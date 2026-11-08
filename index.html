@@ -310,6 +310,15 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .icon-grid button { padding: 0; aspect-ratio: 1; min-height: 0; border: 1px solid var(--line-gold); }
 .icon-grid button.on { border: 2px solid var(--gold); box-shadow: 0 0 8px var(--gold); }
 .icon-grid img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.fearless { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--d-gold-dim); background: var(--d-bg); }
+.fhead { font-size: 12px; font-weight: 700; color: var(--d-gold); }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+.fban { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.fpic { position: relative; width: 40px; height: 40px; display: grid; place-items: center; font-weight: 700; overflow: hidden; background: var(--d-tile); border: 2px solid var(--d-blue); color: var(--d-muted); }
+.fban.red .fpic { border-color: var(--d-red); }
+.fpic img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); opacity: 0.6; }
+.fpic::after { content: ''; position: absolute; inset: 0; background: linear-gradient(45deg, transparent 47%, var(--d-red) 47%, var(--d-red) 53%, transparent 53%); }
+.fname { max-width: 100%; font-size: 10px; color: var(--d-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ---------- 픽창 테마(사이트 전체) */
 body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
 .panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
@@ -1183,6 +1192,7 @@ function renderTeams() {
       <div class="bar" role="img" aria-label="블루 예상 승률 ${pB}%"><i style="width:${pB}%"></i></div>
     </div>
     <div class="dboard">${card('blue', s.blue, rb, eB)}<div class="dmid">
+    ${fearlessHtml(s)}
     ${s.done ? `<div class="actions two">
       <button class="primary" id="btnAgain" ${dis}>같은 팀으로 한 번 더</button>
       <button id="btnClose" ${dis}>결과 닫기</button>
@@ -1205,6 +1215,24 @@ function renderTeams() {
     </div>`}`;
 }
 
+// 피어리스 밴: 이번 시리즈(sid)에서 이미 쓴 챔피언(경기 stats 기준, 리플레이·결과창을 올린 세트만). 테두리 색은 그 챔피언을 쓴 선수의 팀
+function champPic(name) {
+  if (!DD || !DD.ver) return '';
+  const id = DD.champ[name] ? name : Object.keys(DD.champ).find(k => DD.champ[k] === name);
+  return id ? `<img src="https://ddragon.leagueoflegends.com/cdn/${DD.ver}/img/champion/${encodeURIComponent(id)}.png" alt="" loading="lazy">` : '';
+}
+function fearlessHtml(s) {
+  const games = repo.matches.filter(m => m.series === s.sid).sort((a, b) => (a.game || 0) - (b.game || 0));
+  if (!games.length) return '';
+  const used = [], seen = new Set();
+  for (const m of games) for (const [pid, st] of Object.entries(m.stats || {})) {
+    if (!st || !st.champion || seen.has(st.champion)) continue;
+    seen.add(st.champion); used.push({ c: st.champion, side: (m.blue || []).includes(pid) ? 'blue' : 'red', g: m.game });
+  }
+  const miss = games.filter(m => !m.stats || !Object.keys(m.stats).length).length;
+  return `<div class="fearless"><div class="fhead">피어리스 밴 <span class="num">${used.length}</span>${miss ? ` <span class="muted">· 통계 없는 세트 ${miss}개</span>` : ''}</div>
+    ${used.length ? `<div class="fgrid">${used.map(u => `<span class="fban ${u.side}" title="${esc(u.c)} · ${u.g}세트"><span class="fpic">${champPic(u.c) || esc([...u.c][0])}</span><span class="fname">${esc(u.c)}</span></span>`).join('')}</div>` : '<span class="muted">리플레이나 결과창을 올린 세트의 챔피언이 여기에 표시됩니다.</span>'}</div>`;
+}
 function renderRanking() {
   const el = $('ranking');
   if (!repo.players.length) { el.innerHTML = '<h2>순위</h2><div class="empty">선수를 추가하면 MMR 순위가 여기에 표시됩니다.</div>'; return; }
