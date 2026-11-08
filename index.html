@@ -1439,7 +1439,7 @@ $('draft').addEventListener('input', e => { if (e.target.id === 'dSearch' && sta
 $('draft').addEventListener('change', e => { if (e.target.id === 'dSort' && state.draft) { state.draft.sort = e.target.value; renderTeams(); } });
 setInterval(tickDraft, 1000);
 // BGM(YouTube): 상단 `음악` 버튼으로 켜고 끈다. `접기`는 플레이어만 숨기고 소리는 유지(display:none 대신 1px로 줄임). 탭을 옮겨도 계속 재생
-const MUSIC_ID = 'cciyYbPeCR0';
+const MUSIC_ID = 'cciyYbPeCR0', MUSIC_VOL = 50;
 function setMusicFold(fold) {
   $('music').style.cssText = fold ? 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none' : 'margin-bottom:8px';
   $('btnMusicFold').textContent = fold ? '펼치기' : '접기';
@@ -1448,7 +1448,10 @@ $('btnMusic').addEventListener('click', () => {
   const m = $('music'), on = !m.firstChild;
   $('btnMusic').setAttribute('aria-pressed', on); $('btnMusicFold').hidden = !on;
   m.hidden = !on; setMusicFold(false);
-  m.innerHTML = on ? `<iframe style="width:100%;max-width:320px;aspect-ratio:16/9;border:0;border-radius:8px" allow="autoplay; encrypted-media" allowfullscreen src="https://www.youtube.com/embed/${MUSIC_ID}?autoplay=1&loop=1&playlist=${MUSIC_ID}"></iframe>` : '';
+  m.innerHTML = on ? `<iframe style="width:100%;max-width:320px;aspect-ratio:16/9;border:0;border-radius:8px" allow="autoplay; encrypted-media" allowfullscreen src="https://www.youtube.com/embed/${MUSIC_ID}?autoplay=1&loop=1&playlist=${MUSIC_ID}&enablejsapi=1"></iframe>` : '';
+  // 시작 볼륨 MUSIC_VOL%: iframe API에 postMessage(로드 직후 바로는 무시될 수 있어 몇 번 반복)
+  const f = m.querySelector('iframe');
+  if (f) f.addEventListener('load', () => [300, 1000, 2500].forEach(t => setTimeout(() => f.contentWindow && f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [MUSIC_VOL] }), '*'), t)));
 });
 $('btnMusicFold').addEventListener('click', () => setMusicFold($('btnMusicFold').textContent === '접기'));
 $('draft').addEventListener('click', e => {
