@@ -1176,11 +1176,12 @@ function renderWhoami() {
   if (!show) return;
   el.innerHTML = `<div class="who-box"><div class="dbanner"><div class="dtitle">로그인</div><div class="muted">이름을 누르면 들어갑니다. 기록·삭제할 때 이름이 남습니다.</div></div>
     <div class="dpool who-grid">${[...repo.players].sort(byName).map(p => `<button class="dtile${p.id === state.me ? ' on' : ''}" data-me="${esc(p.id)}"><span class="dav">${face(p)}</span><span class="dname">${royalName(p.id, p.name)}</span></button>`).join('')}</div>
-    <div class="dbtns"><button data-me="guest">게스트</button>${state.whoOpen && state.me ? '<button data-me-close>닫기</button>' : ''}</div></div>`;
+    <div class="dbtns"><button data-me="guest">게스트</button>${state.whoOpen && state.me ? '<button data-me-out>로그아웃</button><button data-me-close>닫기</button>' : ''}</div></div>`;
 }
 $('whoami').addEventListener('click', e => {
-  const b = e.target.closest('[data-me],[data-me-close]'); if (!b) return;
+  const b = e.target.closest('[data-me],[data-me-close],[data-me-out]'); if (!b) return;
   if (b.dataset.me) { state.me = b.dataset.me; ssSet('mmr-me', state.me); }
+  if ('meOut' in b.dataset) { state.me = null; try { sessionStorage.removeItem('mmr-me'); } catch (e) {} }
   state.whoOpen = false; renderAll();
 });
 $('btnMe').addEventListener('click', () => { state.whoOpen = true; renderWhoami(); });
