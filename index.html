@@ -1156,7 +1156,7 @@ function renderWhoami() {
   const show = state.whoOpen || (!state.me && repo.mode !== 'loading' && repo.players.length > 0);
   el.hidden = !show; document.body.classList.toggle('who-open', show);
   if (!show) return;
-  el.innerHTML = `<div class="who-box"><div class="dbanner"><div class="dtitle">누구신가요?</div><div class="muted">이름을 누르면 들어갑니다. 기록·삭제할 때 이름이 남습니다.</div></div>
+  el.innerHTML = `<div class="who-box"><div class="dbanner"><div class="dtitle">로그인</div><div class="muted">이름을 누르면 들어갑니다. 기록·삭제할 때 이름이 남습니다.</div></div>
     <div class="dpool who-grid">${[...repo.players].sort(byName).map(p => `<button class="dtile${p.id === state.me ? ' on' : ''}" data-me="${esc(p.id)}"><span class="dav">${face(p)}</span><span class="dname">${royalName(p.id, p.name)}</span></button>`).join('')}</div>
     <div class="dbtns"><button data-me="guest">구경만 하기</button>${state.whoOpen && state.me ? '<button data-me-close>닫기</button>' : ''}</div></div>`;
 }
