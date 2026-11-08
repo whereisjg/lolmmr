@@ -127,6 +127,33 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .team li { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; font-size: 14px; }
 .team li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .team li .num { font-size: 13px; color: var(--muted); white-space: nowrap; }
+/* 토너먼트 드래프트: 챔피언 선택 화면 구성(가운데 지명 그리드, 양옆 팀 슬롯, 위 차례·남은 수) */
+#draft { margin-top: 12px; border: 1px solid var(--gold); border-radius: var(--r); padding: 12px; background: var(--surface-2); }
+.dbanner { text-align: center; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+.dbanner.blue { border-color: var(--blue); } .dbanner.red { border-color: var(--red); }
+.dtitle { font-size: 20px; font-weight: 700; }
+.dcount { font-size: 40px; font-weight: 700; line-height: 1.1; color: var(--gold); }
+.dboard { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); gap: 10px; margin-top: 10px; }
+.dteam { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dhead { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; }
+.dteam.blue .dhead { color: var(--blue); } .dteam.red .dhead { color: var(--red); }
+.dslot { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 8px; border-left: 3px solid transparent; min-width: 0; }
+.dslot.cur { background: var(--gold-soft); border-left-color: var(--gold); }
+.dslot .dav, .dtile .dav { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; border: 2px solid var(--line); background: var(--surface); }
+.dteam.blue .dslot .dav { border-color: var(--blue); color: var(--blue); } .dteam.red .dslot .dav { border-color: var(--red); color: var(--red); }
+.dslot.cur .dav { border-color: var(--gold); }
+.dwho { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.dwho b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlab { font-size: 11px; color: var(--muted); } .dslot.cur .dlab { color: var(--gold); font-weight: 700; }
+.dpool { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; align-content: start; min-width: 0; }
+.dtile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; min-width: 0; }
+.dtile .dav { width: 48px; height: 48px; font-size: 18px; }
+.dtile:hover .dav { border-color: var(--gold); }
+.dtile .dname { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+@media (max-width: 640px) {
+  .dboard { grid-template-columns: 1fr 1fr; }
+  .dpool { grid-column: 1 / -1; order: 3; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
+}
 /* 챔피언 선택 화면 느낌: 원형 아바타 + 포지션(작게) 위, 이름(굵게) 아래 */
 .team li.slot { align-items: center; justify-content: flex-start; padding: 6px 0; border-top: 1px solid var(--line); }
 .team li.slot:first-child { border-top: 0; }
@@ -1302,14 +1329,22 @@ function renderDraft(map, ok) {
   const ids = [...state.selected].sort((a, b) => map[b].mmr - map[a].mmr);
   const t = draftTeams(d), used = new Set([...t.blue, ...t.red]), left = ids.filter(id => !used.has(id));
   const capping = !d.cap.blue || !d.cap.red, turn = capping ? (d.cap.blue ? 'red' : 'blue') : draftOrder(d.picks.length + 1)[d.picks.length];
-  const ko = { blue: '블루', red: '레드' }, avg = a => a.length ? Math.round(teamAvg(a, map)) : '-';
-  const team = side => `<div><b>${ko[side]}</b> <span class="num muted">평균 ${avg(t[side])}</span><div>${t[side].map(id => `${royalName(id, map[id].name)}${id === d.cap[side] ? ' <span class="muted">(팀장)</span>' : ''}`).join(', ') || '<span class="muted">-</span>'}</div></div>`;
+  const ko = { blue: '블루', red: '레드' }, avg = a => a.length ? Math.round(teamAvg(a, map)) : '-', half = ids.length / 2;
+  // 슬롯: 팀장 → 지명 순서. 지금 차례 팀의 다음 빈 칸은 '선택 중'
+  const order = draftOrder(d.picks.length), pickNo = {};
+  d.picks.forEach((id, i) => { pickNo[id] = i + 1; });
+  const slots = side => Array.from({ length: half }, (_, k) => {
+    const id = t[side][k], cur = !id && left.length && side === turn && k === t[side].length;
+    const label = id ? (id === d.cap[side] ? '팀장' : `${pickNo[id]}픽`) : cur ? '선택 중...' : k ? '' : '팀장';
+    return `<div class="dslot${cur ? ' cur' : ''}"><span class="dav">${id ? esc([...map[id].name][0] || '?') : ''}</span><span class="dwho"><span class="dlab">${label}</span><b>${id ? royalName(id, map[id].name) : ''}</b></span>${id ? `<span class="num muted">${map[id].mmr}</span>` : ''}</div>`;
+  }).join('');
+  const side = sd => `<div class="dteam ${sd}"><div class="dhead"><span>${ko[sd]}</span><span class="num">평균 ${avg(t[sd])}</span></div>${slots(sd)}</div>`;
   el.hidden = false;
-  el.innerHTML = `<h2>토너먼트 드래프트</h2>
-    <div class="row between" style="align-items:flex-start">${team('blue')}${team('red')}</div>
-    ${left.length ? `<p><b>${ko[turn]}</b> ${capping ? '팀장을 고르세요' : '팀장이 지명할 차례'}</p>
-    <div class="chips">${left.map(id => `<button class="chip" data-draft="${esc(id)}">${royalName(id, map[id].name)}<span class="num">${map[id].mmr}</span></button>`).join('')}</div>` : ''}
-    <div class="row" style="margin-top:10px"><button class="primary" id="btnDraftGo"${!left.length && !state.busy ? '' : ' disabled'}>이 팀으로 시작</button><button id="btnDraftBack"${used.size ? '' : ' disabled'}>되돌리기</button><button id="btnDraftCancel">취소</button></div>`;
+  el.innerHTML = `<div class="dbanner ${turn}"><div class="dtitle">${left.length ? `${ko[turn]} ${capping ? '팀장을 고르세요!' : '팀장이 지명하세요!'}` : '드래프트 완료!'}</div><div class="dcount num">${left.length}</div></div>
+    <div class="dboard">${side('blue')}
+      <div class="dpool">${left.map(id => `<button class="dtile" data-draft="${esc(id)}"><span class="dav">${esc([...map[id].name][0] || '?')}</span><span class="dname">${royalName(id, map[id].name)}</span><span class="num muted">${map[id].mmr}</span></button>`).join('') || '<span class="muted">모두 지명됐습니다.</span>'}</div>
+      ${side('red')}</div>
+    <div class="row" style="margin-top:10px;justify-content:center"><button class="primary" id="btnDraftGo"${!left.length && !state.busy ? '' : ' disabled'}>이 팀으로 시작</button><button id="btnDraftBack"${used.size ? '' : ' disabled'}>되돌리기</button><button id="btnDraftCancel">취소</button></div>`;
 }
 // BGM(YouTube): 상단 `음악` 버튼으로 켜고 끈다. `접기`는 플레이어만 숨기고 소리는 유지(display:none 대신 1px로 줄임). 탭을 옮겨도 계속 재생
 const MUSIC_ID = 'cciyYbPeCR0';
