@@ -264,6 +264,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
         <button id="btnManual">직접 짜기</button>
         <button id="btnClearSel">초기화</button>
       </div>
+      <div id="draft" hidden></div>
     </div>
     <div class="panel" id="result" hidden></div>
   </section>
@@ -294,7 +295,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
       <ol>
         <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글(@멘션, 성까지 붙인 이름도 됨)을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
-        <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 MMR 순으로 나눈 뒤 손으로 고칩니다.</li>
+        <li><b>팀 짜기</b>는 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>직접 짜기</b>는 선수마다 블루/레드를 직접 골라 시작합니다(포지션은 자동 배정 후 같은 팀끼리 눌러 교환).</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 서로 자리를 그대로 맞바꿔 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
         <li>중간에 사람이 바뀌면 승리 버튼 아래 <b>선수 교체</b>로 나가는 선수와 들어오는 선수를 고릅니다. 시리즈 점수는 그대로이고, 들어온 선수가 같은 팀·같은 포지션을 이어받아 다음 세트부터 MMR이 반영됩니다.</li>
         <li>지각한 사람은 팀 화면 아래에서 고르고 점수(−10/−20/−30)를 고른 뒤 <b>지각</b> 버튼을 두 번 누르면 바로 MMR이 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
@@ -962,7 +963,7 @@ const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
 const state = {
   selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
-  picking: null, pick: new Set(), swapId: null, upload: null, replayPlan: null,
+  picking: null, pick: new Set(), swapId: null, draft: null, upload: null, replayPlan: null,
   lastKey: null, confirmReset: false, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
 };
 // 순위 1위(한 세트 이상 뛴 선수 중 MMR 최고, 같으면 가나다순). 모든 화면에서 황금 표시
@@ -1028,6 +1029,7 @@ function renderTeams() {
   $('btnClearSel').textContent = state.confirmReset ? '한 번 더 누르면 초기화' : '초기화';
   $('btnClearSel').classList.toggle('danger', !!state.confirmReset);
   $('btnManual').disabled = !ok || state.busy || inSeries();
+  renderDraft(map, ok);
 
   const res = $('result');
   const s = repo.series;
@@ -1270,14 +1272,41 @@ function rolesFor(blue, red, map) {
   const mmrs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].mmr]));
   return { ...assignRoles(blue, prefs, mmrs).roles, ...assignRoles(red, prefs, mmrs).roles };
 }
-// 직접 짜기: MMR 순으로 번갈아 나눠 시작하고, 선수를 맞바꿔 조정한다
+// 직접 짜기: 빈 팀에서 선수마다 블루/레드를 골라 시작한다(state.draft {id:'blue'|'red'}). 시작 후 포지션은 맞바꿔 조정
 function manualSplit() {
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
-  const map = pmap(), ids = [...state.selected].sort((a, b) => map[b].mmr - map[a].mmr);
-  const blue = ids.filter((_, i) => i % 4 === 0 || i % 4 === 3), red = ids.filter((_, i) => i % 4 === 1 || i % 4 === 2);
-  state.swapId = null;
-  run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })));
+  state.draft = {}; renderTeams();
 }
+function renderDraft(map, ok) {
+  const el = $('draft');
+  if (state.draft && (!ok || inSeries())) state.draft = null;
+  if (!state.draft) { el.hidden = true; return; }
+  const d = state.draft, ids = [...state.selected].sort((a, b) => map[b].mmr - map[a].mmr), half = ids.length / 2;
+  for (const id of Object.keys(d)) if (!state.selected.has(id)) delete d[id];
+  const team = side => ids.filter(id => d[id] === side);
+  const b = team('blue'), r = team('red'), full = b.length === half && r.length === half;
+  const avg = a => a.length ? Math.round(teamAvg(a, map)) : '-';
+  el.hidden = false;
+  el.innerHTML = `<h2>직접 짜기</h2>
+    <div class="muted">블루 <b class="num">${b.length}/${half}</b> · 평균 <span class="num">${avg(b)}</span> &nbsp; 레드 <b class="num">${r.length}/${half}</b> · 평균 <span class="num">${avg(r)}</span></div>
+    ${ids.map(id => `<div class="row between" style="margin-top:6px"><span>${royalName(id, map[id].name)} <span class="num muted">${map[id].mmr}</span></span>
+      <span class="row">${['blue', 'red'].map(side => `<button class="small${d[id] === side ? ' ' + side : ''}" data-draft="${esc(id)}" data-side="${side}" aria-pressed="${d[id] === side}"${d[id] !== side && team(side).length >= half ? ' disabled' : ''}>${side === 'blue' ? '블루' : '레드'}</button>`).join('')}</span></div>`).join('')}
+    <div class="row" style="margin-top:10px"><button class="primary" id="btnDraftGo"${full && !state.busy ? '' : ' disabled'}>이 팀으로 시작</button><button id="btnDraftCancel">취소</button></div>`;
+}
+$('draft').addEventListener('click', e => {
+  const d = state.draft; if (!d) return;
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.id === 'btnDraftCancel') { state.draft = null; renderTeams(); return; }
+  if (t.id === 'btnDraftGo') {
+    if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
+    const map = pmap(), ids = [...state.selected], blue = ids.filter(id => d[id] === 'blue'), red = ids.filter(id => d[id] === 'red');
+    if (!blue.length || blue.length !== red.length || blue.length + red.length !== ids.length) return;
+    state.draft = null; state.swapId = null;
+    run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })));
+    return;
+  }
+  if (t.dataset.draft) { const id = t.dataset.draft; d[id] = d[id] === t.dataset.side ? undefined : t.dataset.side; if (!d[id]) delete d[id]; renderTeams(); }
+});
 function swapPick(id) {
   const s = repo.series; if (!s) return;
   const a = state.swapId;
