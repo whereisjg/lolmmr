@@ -329,6 +329,14 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .dpf.on .posi { opacity: 1; }
 .match .role { min-width: 22px; }
 .match .role .posi { width: 16px; height: 16px; }
+#whoami { position: fixed; inset: 0; z-index: 50; overflow-y: auto; padding: 24px 16px; background: radial-gradient(ellipse at 50% 0%, var(--d-bg2), var(--d-bg) 70%); color: var(--d-ink); }
+body.who-open { overflow: hidden; }
+.who-box { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.who-grid { border-radius: 8px; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+.who-grid .dtile.on .dav { border-color: var(--d-gold); box-shadow: 0 0 8px var(--d-gold); }
+tr.me td { box-shadow: inset 0 1px 0 var(--d-cyan), inset 0 -1px 0 var(--d-cyan); }
+.dslot.me .dwho b::after { content: ' (나)'; font-size: 11px; color: var(--d-cyan); font-weight: 400; }
+.chip.me { box-shadow: inset 0 -2px 0 var(--d-cyan); }
 /* ---------- 픽창 테마(사이트 전체) */
 body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
 .panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
@@ -363,8 +371,9 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
 <div class="wrap">
   <header class="top">
     <div class="brand"><h1>내전 MMR 밸런서</h1><span class="num">5V5</span></div>
-    <div class="row"><button class="pill" id="btnMusic" aria-pressed="false">음악</button><button class="pill" id="btnMusicFold" hidden>접기</button><a class="pill help-link" href="#help">사용법</a><span class="pill" id="storePill">불러오는 중</span></div>
+    <div class="row"><button class="pill" id="btnMusic" aria-pressed="false">음악</button><button class="pill" id="btnMusicFold" hidden>접기</button><a class="pill help-link" href="#help">사용법</a><button class="pill" id="btnMe">이름 선택</button><span class="pill" id="storePill">불러오는 중</span></div>
   </header>
+  <div id="whoami" hidden></div>
   <div id="music" hidden style="margin-bottom:8px"></div>
 
   <nav class="tabs" aria-label="화면">
@@ -416,6 +425,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
     <div class="panel help">
       <div class="row between"><h2>사용법</h2><a href="#teams" class="small-link">팀 짜기로 돌아가기</a></div>
 
+      <p>사이트에 들어오면 <b>내 이름</b>을 누릅니다(구경만 하려면 <b>구경만 하기</b>). 경기를 기록하거나 지울 때 누가 했는지 남습니다. 위쪽 <b>나:</b> 버튼으로 바꿀 수 있습니다.</p>
       <h3>처음 한 번</h3>
       <ol>
         <li><b>선수</b> 탭에서 본인 이름의 <b>편집</b>을 누릅니다.</li>
@@ -974,7 +984,7 @@ const repo = {
     const finished = score[winner] >= winsOf(s);
     const next = { ...s, score, done: finished, winner: finished ? winner : null }; // 끝나도 결과를 화면에 남긴다
     const mid = s.sid + '-g' + game;
-    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, winner, series: s.sid, game, wins: winsOf(s), ...extra };
+    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, winner, series: s.sid, game, wins: winsOf(s), ...(meName() ? { by: meName() } : {}), ...extra };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + mid);
       await this.db.runTransaction(async t => {
@@ -1028,7 +1038,7 @@ const repo = {
       ...(isLatest && m.prevSetStreak && pid in m.prevSetStreak ? { setStreak: m.prevSetStreak[pid] } : {})
     });
     const { id: _id, ...doc } = m;
-    const trashed = { ...doc, deletedAt: ts };
+    const trashed = { ...doc, deletedAt: ts, ...(meName() ? { deletedBy: meName() } : {}) };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + m.id);
       await this.db.runTransaction(async t => {
@@ -1135,7 +1145,29 @@ async function run(fn) {
 }
 
 // ---------- 렌더
+// 나는 누구: 접속할 때마다(탭을 닫으면 다시) 이름을 고른다. sessionStorage 'mmr-me' = 선수 id | 'guest'. 기록·삭제·MMR 수정에 by로 남김(보안 아님)
+function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+state.me = ssGet('mmr-me') || null;
+function meName() { const p = state.me && state.me !== 'guest' && pmap()[state.me]; return p ? p.name : ''; }
+function renderWhoami() {
+  const el = $('whoami'), b = $('btnMe');
+  b.textContent = meName() ? `나: ${meName()}` : state.me === 'guest' ? '구경 중' : '이름 선택';
+  const show = state.whoOpen || (!state.me && repo.mode !== 'loading' && repo.players.length > 0);
+  el.hidden = !show; document.body.classList.toggle('who-open', show);
+  if (!show) return;
+  el.innerHTML = `<div class="who-box"><div class="dbanner"><div class="dtitle">누구신가요?</div><div class="muted">이름을 누르면 들어갑니다. 기록·삭제할 때 이름이 남습니다.</div></div>
+    <div class="dpool who-grid">${[...repo.players].sort(byName).map(p => `<button class="dtile${p.id === state.me ? ' on' : ''}" data-me="${esc(p.id)}"><span class="dav">${face(p)}</span><span class="dname">${royalName(p.id, p.name)}</span></button>`).join('')}</div>
+    <div class="dbtns"><button data-me="guest">구경만 하기</button>${state.whoOpen && state.me ? '<button data-me-close>닫기</button>' : ''}</div></div>`;
+}
+$('whoami').addEventListener('click', e => {
+  const b = e.target.closest('[data-me],[data-me-close]'); if (!b) return;
+  if (b.dataset.me) { state.me = b.dataset.me; ssSet('mmr-me', state.me); }
+  state.whoOpen = false; renderAll();
+});
+$('btnMe').addEventListener('click', () => { state.whoOpen = true; renderWhoami(); });
 function renderHeader() {
+  renderWhoami();
   const p = $('storePill');
   if (repo.mode === 'loading') { p.textContent = '연결 중'; p.className = 'pill'; p.title = ''; }
   else if (repo.mode === 'db' && !repo.stale) { p.textContent = '● 연결됨'; p.className = 'pill shared'; p.title = '모두와 같은 데이터를 봅니다'; }
@@ -1153,7 +1185,7 @@ function renderTeams() {
       : '<div class="empty" style="width:100%"><span>아직 등록된 선수가 없습니다.</span><a href="#players">선수 탭에서 이름을 추가하세요</a></div>';
   } else {
     chips.innerHTML = [...repo.players].sort(byName).map(p =>
-      `<button class="chip${state.pick.has(p.id) ? ' marked' : ''}${p.id === kingId() ? ' royal-chip' : ''}" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}"><span class="cav" aria-hidden="true">${face(p)}</span>${royalName(p.id, p.name)}<span class="num">${p.mmr}</span></button>`).join('');
+      `<button class="chip${p.id === state.me ? ' me' : ''}${state.pick.has(p.id) ? ' marked' : ''}${p.id === kingId() ? ' royal-chip' : ''}" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}"><span class="cav" aria-hidden="true">${face(p)}</span>${royalName(p.id, p.name)}<span class="num">${p.mmr}</span></button>`).join('');
   }
   renderCons(map);
   const ok = n >= 2 && n <= 10 && n % 2 === 0;
@@ -1186,7 +1218,7 @@ function renderTeams() {
       const p = map[id], r = s.roles[id], off = isOffRole(p, r), pos = p.pos || [];
       const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
       const tags = `${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
-      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
+      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}${id === state.me ? ' me' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="dteam ${side}"><div class="dhead"><span>${side === 'blue' ? '블루' : '레드'}</span><span class="num">평균 ${Math.round(avg)}</span></div>${rows}
@@ -1261,7 +1293,7 @@ function renderRanking() {
   el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만${hidden ? ` · 기록 없는 ${hidden}명 숨김` : ''}</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="시리즈 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
-      <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}">
+      <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}${p.id === state.me ? ' me' : ''}">
         <td class="rank">${i + 1}</td>
         <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}${lateTag(p)}</td>
         <td class="r mmr">${p.mmr}</td>
@@ -1313,7 +1345,7 @@ function trashHtml() {
     <span class="muted">복원하면 그 경기의 MMR·전적이 다시 반영됩니다. 연승 기록은 바뀌지 않습니다.</span>
     ${repo.trash.map(x => `<div class="trash-item">
       <div class="match-head"><span class="num">${fmtTime(x.ts)}${x.game ? ` · ${x.game}세트` : ''}</span><span class="${x.winner === 'blue' ? 'win-b' : 'win-r'}">${x.winner === 'blue' ? '블루 승' : '레드 승'}</span></div>
-      <span class="muted">블루: ${names(x, x.blue)} / 레드: ${names(x, x.red)} · 삭제 ${fmtTime(x.deletedAt)}</span>
+      <span class="muted">블루: ${names(x, x.blue)} / 레드: ${names(x, x.red)} · 삭제 ${fmtTime(x.deletedAt)}${x.deletedBy ? ` · ${esc(x.deletedBy)}` : ''}</span>
       <div class="row">${state.confirmPurge === x.id
         ? `<span class="down">완전히 지우면 되돌릴 수 없습니다.</span><button class="small danger" data-purge-yes="${esc(x.id)}" ${dis}>완전 삭제</button><button class="small" data-purge-no>취소</button>`
         : `<button class="small" data-restore="${esc(x.id)}" ${dis}>복원</button><button class="small danger" data-purge="${esc(x.id)}" ${dis}>완전 삭제</button>`}</div>
@@ -1338,7 +1370,7 @@ function renderHistory() {
     : `<button class="small danger" data-del="${esc(m.id)}" ${dis}>삭제</button>`;
   el.innerHTML = `<div class="row between"><h2>경기 기록</h2><span class="muted">최근 ${repo.matches.length}경기</span></div>
     ${repo.matches.map(m => `<div class="match">
-      <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}</span>
+      <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}${m.by ? ` <span class="muted">· 기록 ${esc(m.by)}</span>` : ''}</span>
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
       ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : ''}
@@ -2162,12 +2194,12 @@ $('playerList').addEventListener('click', e => {
   $('editPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('editName').focus();
 });
 // 경기 밖 MMR 변경 기록: type manual(선수 편집) | late(지각) | lateUndo(지각 취소). 경기 증감은 matches.deltas에 있다
-function mmrLogAdd(q, type, to) { return [...(q.mmrLog || []), { type, from: q.mmr, to, ts: Date.now() }]; }
+function mmrLogAdd(q, type, to) { return [...(q.mmrLog || []), { type, from: q.mmr, to, ts: Date.now(), ...(meName() ? { by: meName() } : {}) }]; }
 const MMR_LOG_LABEL = { manual: '수동 조정', late: '지각', lateUndo: '지각 취소' };
 // 편집 패널: 경기 증감과 경기 밖 변경을 시간순으로 합쳐 최근 10개
 async function renderMmrLog(p) {
   const box = $('editMmrLog'); if (!p) { box.innerHTML = ''; return; }
-  const own = (p.mmrLog || []).map(x => ({ ts: x.ts, kind: x.type || 'manual', d: x.to - x.from, text: `${x.from} → ${x.to}` }));
+  const own = (p.mmrLog || []).map(x => ({ ts: x.ts, kind: x.type || 'manual', d: x.to - x.from, text: `${x.from} → ${x.to}${x.by ? ` · ${x.by}` : ''}` }));
   let games = [];
   try {
     games = (await repo.allMatches()).filter(m => m.deltas && p.id in m.deltas).map(m => {
