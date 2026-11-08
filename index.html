@@ -1395,7 +1395,7 @@ function renderStats() {
       ${top.length ? `<div class="champs">${top.map(([c, x]) => `<span class="champ">${mpicHtml(c)}${esc(c)} <span class="num muted">${x.n}판 ${pct(x.w, x.n)}</span></span>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
-  const ranks = Object.entries(champs).sort((x, y) => y[1].n - x[1].n || y[1].w - x[1].w).slice(0, 10);
+  const ranks = Object.entries(champs).sort((x, y) => y[1].n - x[1].n || y[1].w - x[1].w).slice(0, 30);
   el.innerHTML = `<div class="row between"><h2>통계</h2><span class="muted">결과창을 올린 경기 기준${st.loading ? ' · 새로고침 중' : ''}</span></div>
     <div class="stat-grid">${cards}</div>
     <h2>많이 나온 챔피언</h2>
