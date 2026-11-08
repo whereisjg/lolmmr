@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+</style>
 </head>
 <body>
 <title>내전 MMR 밸런서</title>
@@ -14,40 +15,30 @@
 <style>
 /* Layout: 한 열 콘솔. 상단 탭, 팀 짜기는 블루/레드 두 카드가 마주보는 구도 */
 :root {
-  --bg: #eef0f4;
-  --surface: #ffffff;
-  --surface-2: #f6f7fa;
-  --ink: #141823;
-  --muted: #5b6273;
-  --line: #d9dde6;
-  --blue: #2259c4;
-  --blue-soft: #e3ebfb;
-  --red: #c2343a;
-  --red-soft: #fae5e5;
-  --gold: #94690f;
-  --gold-soft: #f6ecd4;
-  --gold-shine: #fffaea;
-  --gold-glint: #f2c94c;
-  --good: #1d7f4e;
-  --bad: #c2343a;
-  --on-ink: #ffffff;
+  /* 픽창 테마: 라이트/다크 구분 없이 항상 어두운 남색 + 금색 */
+  --bg: #010a13;
+  --surface: #0a1520;
+  --surface-2: #10202c;
+  --ink: #f0e6d2;
+  --muted: #a09b8c;
+  --line: #2a3640;
+  --line-gold: #785a28;
+  --blue: #4f9ce8;
+  --blue-soft: #0b2236;
+  --red: #e84057;
+  --red-soft: #2b0f17;
+  --gold: #c8aa6e;
+  --gold-soft: #2a2212;
+  --gold-shine: #5b4a1f;
+  --gold-glint: #fff1c4;
+  --good: #0ac8b9;
+  --bad: #e84057;
+  --on-ink: #010a13;
   --font-body: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-num: "Chakra Petch", "Noto Sans KR", ui-monospace, system-ui, sans-serif;
-  --r: 10px;
-  /* 토너먼트 드래프트 전용(라이트/다크 공통, 챔피언 선택 화면 분위기) */
+  --r: 4px;
   --d-bg: #010a13; --d-bg2: #0a1d2a; --d-gold: #c8aa6e; --d-gold-dim: #785a28; --d-ink: #f0e6d2; --d-muted: #a09b8c; --d-cyan: #0ac8b9; --d-blue: #4f9ce8; --d-red: #e84057; --d-tile: #1e2328;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0d1017; --surface: #161a24; --surface-2: #1c212d; --ink: #e7e9ef; --muted: #959cad; --line: #2a3141;
-    --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716; --gold-shine: #5c4718; --gold-glint: #fff1b8;
-    --good: #4cc488; --bad: #f07474; --on-ink: #0d1017; color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0d1017; --surface: #161a24; --surface-2: #1c212d; --ink: #e7e9ef; --muted: #959cad; --line: #2a3141;
-  --blue: #6c9cf2; --blue-soft: #1a2741; --red: #f07474; --red-soft: #3a1d22; --gold: #d9ae55; --gold-soft: #2f2716; --gold-shine: #5c4718; --gold-glint: #fff1b8;
-  --good: #4cc488; --bad: #f07474; --on-ink: #0d1017; color-scheme: dark;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -302,6 +293,35 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
   .tabs a { font-size: 12px; padding: 8px 2px; }
 }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+/* ---------- 픽창 테마(사이트 전체) */
+body { background: radial-gradient(ellipse at 50% -10%, var(--d-bg2), var(--bg) 60%) fixed var(--bg); }
+.panel { border-color: var(--line-gold); background: linear-gradient(180deg, var(--surface-2), var(--surface) 120px); }
+h1, h2 { color: var(--ink); letter-spacing: 0.02em; }
+.tabs { background: var(--surface); border-color: var(--line-gold); }
+.tabs a[aria-current="page"] { background: none; color: var(--gold); box-shadow: inset 0 -2px 0 var(--gold); border-radius: 0; }
+button { border-radius: 0; background: var(--d-tile); border-color: var(--line-gold); }
+button:hover:not(:disabled) { border-color: var(--gold); }
+button.primary { background: linear-gradient(var(--d-bg2), var(--bg)); color: var(--gold); border: 2px solid var(--gold); font-weight: 700; }
+button.blue { background: linear-gradient(var(--blue), var(--blue-soft)); color: var(--ink); }
+button.red { background: linear-gradient(var(--red), var(--red-soft)); color: var(--ink); }
+input, select, textarea { border-radius: 0; background: var(--bg); border-color: var(--line-gold); }
+.pill { background: var(--surface); border-color: var(--line-gold); }
+/* 참가자 선택 칩: 픽창 타일처럼 사각 아바타 + 이름 */
+.chip { border-radius: 0; align-items: center; padding: 3px 10px 3px 3px; background: var(--d-tile); border-color: var(--line-gold); }
+.chip .cav { width: 26px; height: 26px; display: grid; place-items: center; font-weight: 700; font-size: 13px; background: linear-gradient(160deg, var(--d-bg2), var(--bg)); border: 1px solid var(--line-gold); }
+.chip[aria-pressed="true"] { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); box-shadow: 0 0 8px var(--gold-shine); }
+.chip[aria-pressed="true"] .num { color: var(--gold); }
+.chip[aria-pressed="true"] .cav { border-color: var(--gold); }
+/* 팀 카드: 픽창 팀 슬롯 */
+.team { background: linear-gradient(180deg, var(--surface-2), var(--bg)); border-radius: 0; }
+.team.blue { background: linear-gradient(180deg, var(--blue-soft), var(--bg)); border-color: var(--blue); }
+.team.red { background: linear-gradient(180deg, var(--red-soft), var(--bg)); border-color: var(--red); }
+.slot .av { width: 40px; height: 40px; font-size: 16px; background: radial-gradient(circle, var(--d-bg2), var(--d-tile)); color: var(--ink); }
+.team.blue .slot .av { border-color: var(--line-gold); color: var(--ink); } .team.red .slot .av { border-color: var(--red); color: var(--ink); }
+.team li.slot { border-top-color: var(--d-tile); }
+.team li.swap-on { background: linear-gradient(90deg, var(--line-gold), transparent); outline: 0; box-shadow: inset 4px 0 0 var(--gold); }
+.team li.swap-on .av { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); }
+.bar { height: 4px; border-radius: 0; }
 </style>
 
 <div class="wrap">
@@ -1094,7 +1114,7 @@ function renderTeams() {
       : '<div class="empty" style="width:100%"><span>아직 등록된 선수가 없습니다.</span><a href="#players">선수 탭에서 이름을 추가하세요</a></div>';
   } else {
     chips.innerHTML = [...repo.players].sort(byName).map(p =>
-      `<button class="chip${state.pick.has(p.id) ? ' marked' : ''}${p.id === kingId() ? ' royal-chip' : ''}" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}">${royalName(p.id, p.name)}<span class="num">${p.mmr}</span></button>`).join('');
+      `<button class="chip${state.pick.has(p.id) ? ' marked' : ''}${p.id === kingId() ? ' royal-chip' : ''}" data-pick="${esc(p.id)}" aria-pressed="${state.selected.has(p.id)}"><span class="cav" aria-hidden="true">${esc([...p.name][0] || '?')}</span>${royalName(p.id, p.name)}<span class="num">${p.mmr}</span></button>`).join('');
   }
   renderCons(map);
   const ok = n >= 2 && n <= 10 && n % 2 === 0;
