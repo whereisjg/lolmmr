@@ -438,69 +438,73 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
     <div class="panel help">
       <div class="row between"><h2>사용법</h2><a href="#teams" class="small-link">팀 짜기로 돌아가기</a></div>
 
-      <p>사이트에 들어오면 <b>내 이름</b>을 누릅니다(이름 없이 보려면 <b>게스트</b>. 게스트는 보기만 되고 기록·수정은 안 됩니다). 경기를 기록하거나 지울 때 누가 했는지 남습니다. 위쪽 내 이름 버튼으로 바꿀 수 있습니다.</p>
-      <h3>처음 한 번</h3>
-      <ol>
-        <li><b>선수</b> 탭에서 본인 이름의 <b>편집</b>을 누릅니다.</li>
-        <li><b>선호 포지션</b>을 최대 2개 고릅니다. 먼저 고른 쪽이 주 포지션입니다. 주 포지션만 고르면 순위에 빨간 <b>비겁자</b> 딱지가 붙습니다.</li>
-        <li><b>롤 닉네임</b>을 넣습니다. 여러 계정이면 쉼표로 구분하고 #태그는 빼도 됩니다. 리플레이·결과창 자동 연결에 꼭 필요합니다.</li>
-        <li>정말 못 하는 자리가 있으면 <b>기피 포지션</b>을 1개 고릅니다. 자동 팀 짜기가 웬만하면 그 자리에 배정하지 않습니다. 점수 계산과는 상관없습니다.</li>
-        <li><b>프로필 사진</b>에 좋아하는 챔피언 이름을 넣거나, 아래 <b>소환사 아이콘 검색</b>에서 팀 이름(T1, Gen.G 등)을 찾아 누르면 칩·팀 카드·드래프트에 나옵니다. 비우면 이름 첫 글자.</li>
-      </ol>
+      <h3>1. 들어가기</h3>
+      <ul>
+        <li>사이트를 열면 <b>로그인</b> 화면에서 내 이름을 누릅니다. 탭을 닫으면 다시 물어봅니다.</li>
+        <li><b>게스트</b>는 보기만 되고 기록·수정은 안 됩니다.</li>
+        <li>오른쪽 위 내 이름을 누르면 <b>다른 이름으로 로그인</b> / <b>로그아웃</b>을 할 수 있습니다.</li>
+        <li>오른쪽 위가 <b>● 연결됨</b>이어야 모두와 같은 데이터를 봅니다.</li>
+      </ul>
 
-      <h3>팀 짜기</h3>
-      <p><b>팀 짜기</b>나 <b>드래프트</b>를 시작한 사람이 <b>방장</b>이 되고, 시리즈 동안 방장만 기록·교환·교체를 할 수 있습니다. 방장이 자리를 비우면 시리즈 화면 위 <b>방장 넘겨받기</b>를 두 번 누릅니다.</p>
-      <ol>
-        <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글(@멘션, 성까지 붙인 이름도 됨)을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
-        <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
-        <li><b>자동</b>은 평균 MMR이 비슷한 조합 중에서 같은 포지션끼리 실력 차이가 작고, 선호 포지션이 잘 맞고, 고수·하수가 한 팀에 몰리지 않고, 최근에 같은 팀이었던 사람이 덜 겹치는 조합을 고릅니다. <b>토너먼트 드래프트</b>는 블루·레드 팀장을 먼저 고른 뒤 블루부터 1·2·2·2·1명씩 번갈아 지명합니다(포지션은 자동 배정 후 같은 팀끼리 눌러 교환).</li>
-        <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 서로 자리를 그대로 맞바꿔 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
-        <li>중간에 사람이 바뀌면 승리 버튼 아래 <b>선수 교체</b>로 나가는 선수와 들어오는 선수를 고릅니다. 시리즈 점수는 그대로이고, 들어온 선수가 같은 팀·같은 포지션을 이어받아 다음 세트부터 MMR이 반영됩니다.</li>
-        <li>지각한 사람은 팀 화면 아래에서 고르고 점수(−10/−20/−30)를 고른 뒤 <b>지각</b> 버튼을 두 번 누르면 바로 MMR이 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
-        <li>팀 화면은 모든 사람에게 똑같이 보입니다. <b>초기화</b>는 두 번 눌러야 실행되고, 기록과 MMR은 지우지 않습니다.</li>
-      </ol>
+      <h3>2. 처음 한 번: 내 정보 채우기</h3>
+      <p><b>선수</b> 탭에서 내 이름 옆 <b>편집</b>을 누릅니다.</p>
+      <ul>
+        <li><b>선호 포지션</b> 최대 2개(먼저 고른 쪽이 주 포지션). 주 포지션만 고르면 <b>비겁자</b> 딱지가 붙습니다.</li>
+        <li><b>기피 포지션</b> 1개(선택). 자동 팀 짜기가 웬만하면 그 자리에 넣지 않습니다.</li>
+        <li><b>롤 닉네임</b>: 리플레이·결과창에서 나를 자동으로 찾는 데 꼭 필요합니다. 여러 계정이면 쉼표로, #태그는 빼도 됩니다.</li>
+        <li><b>프로필 사진</b>: 챔피언 이름을 넣거나 <b>소환사 아이콘 검색</b>(T1, Gen.G 등)에서 고릅니다.</li>
+      </ul>
 
-      <h3>결과 기록 (3판 2선 / 5판 3선)</h3>
-      <p>팀을 짜면 위쪽 <b>3판 2선 ⇄</b> 버튼으로 5판 3선과 바꿀 수 있습니다(1세트 전에만. 이 기기에서 고른 방식이 다음 시리즈 기본값). 한 번 짠 팀으로 한쪽이 2승(5판 3선은 3승)할 때까지 진행합니다. 기록은 <b>한 사람만</b> 해 주세요.</p>
+      <h3>3. 팀 짜기</h3>
       <ol>
-        <li><b>리플레이 업로드 (PC, 추천):</b> 게임이 다 끝난 뒤 팀 카드 아래 <b>리플레이로 기록</b>을 누르고 그날 리플레이를 한꺼번에 고릅니다. 미리보기를 확인하고 <b>기록하기</b>만 누르면 끝입니다. 세트 순서, 승리 팀, MMR, 경기 통계까지 자동으로 들어가서 <b>따로 조작할 필요가 없습니다</b>.
+        <li><b>참가자 고르기:</b> 이름을 누르거나(2~10명, 짝수), 카톡 모집 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣습니다. 못 찾은 이름은 누구인지 한 번 고르면 다음부터 자동입니다.</li>
+        <li><b>조건(선택):</b> <b>+ 같은 팀 묶기</b>(듀오), <b>+ 다른 팀 나누기</b>.</li>
+        <li><b>방식 고르기</b>
           <ul>
-            <li>다운로드 순서는 상관없습니다. 경기 번호로 세트 순서를 맞춥니다.</li>
-            <li>리플레이 파일 이름은 바꾸지 마세요.</li>
-            <li>리플레이는 롤 클라이언트 → 프로필 → 대전 기록에서 받으면 <span class="mono">문서\League of Legends\Replays</span>에 저장됩니다.</li>
+            <li><b>자동</b>: 평균 MMR, 같은 포지션끼리 실력 차이, 선호·기피 포지션, 최근 같은 팀 여부를 따져 고르게 짭니다.</li>
+            <li><b>토너먼트 드래프트</b>: 팀장 2명을 고른 뒤 블루부터 1·2·2·2·1명씩 번갈아 지명합니다. 차례마다 60초, 넘기면 무작위로 지명됩니다.</li>
           </ul>
         </li>
-        <li><b>버튼으로 (리플레이를 올리지 않을 때):</b> 폰으로 기록하거나 리플레이를 받을 수 없을 때 씁니다. 세트가 끝날 때마다 <b>블루 승리</b> 또는 <b>레드 승리</b>를 누릅니다. 이 방법은 승패와 MMR만 기록되므로, 통계가 필요하면 나중에 기록 탭에서 결과창이나 리플레이를 올려 주세요.</li>
+        <li><b>고치기:</b> 같은 팀 선수 둘을 차례로 누르면 포지션 교환(언제나), 상대 팀 선수를 누르면 팀 교환(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
       </ol>
-      <p>시리즈가 끝나면 결과가 화면에 남습니다. <b>같은 팀으로 한 번 더</b> 또는 <b>결과 닫기</b>를 누르세요. 버튼으로 기록했다면 이 화면의 <b>리플레이로 통계 추가</b>로 각 세트에 통계만 붙일 수 있습니다(승패·MMR은 그대로).</p>
+      <p>팀을 시작한 사람이 <b>방장</b>입니다. 시리즈 동안 기록·교환·교체는 방장만 할 수 있고, 다른 사람 화면은 보기 전용입니다. 방장이 자리를 비우면 <b>방장 넘겨받기</b>를 두 번 누릅니다. 시리즈 화면 위에 <b>자동</b> / <b>드래프트</b>(팀을 바꾸면 <b>·수정</b>)로 어떻게 짠 팀인지 표시됩니다.</p>
 
-      <h3>경기 통계 넣기</h3>
+      <h3>4. 경기 기록</h3>
+      <p>시리즈는 기본 <b>3판 2선</b>이고, 1세트 전에 위쪽 <b>3판 2선 ⇄</b>를 누르면 <b>5판 3선</b>으로 바뀝니다.</p>
       <ul>
-        <li><b>기록</b> 탭의 경기 카드에서 <b>리플레이 올리기</b>(PC) 또는 <b>결과창 올리기</b>(스크린샷, 폰 가능)를 누릅니다.</li>
-        <li>인식된 플레이어와 우리 선수를 연결하고 저장합니다. 한 번 연결한 닉네임은 다음부터 자동입니다.</li>
-        <li>대전 기록 화면처럼 딜량이 안 보이는 스크린샷이면 딜량 탭을 한 장 더 올리면 합쳐집니다.</li>
-        <li><b>통계</b> 탭에서 선수별 평균 KDA·CS·딜량과 모스트 챔피언을 볼 수 있습니다.</li>
+        <li><b>리플레이로 기록 (PC, 추천):</b> 게임이 끝나면 <b>리플레이로 기록</b>을 누르고 그날 리플레이를 한꺼번에 고릅니다. 세트 순서·승리 팀·MMR·통계가 자동으로 들어갑니다. 리플레이는 롤 클라이언트 → 프로필 → 대전 기록에서 받으면 <span class="mono">문서\League of Legends\Replays</span>에 저장됩니다. 파일 이름은 바꾸지 마세요.</li>
+        <li><b>버튼으로 (폰):</b> 세트가 끝날 때마다 <b>블루 승리</b> / <b>레드 승리</b>. 통계는 나중에 기록 탭에서 올릴 수 있습니다.</li>
+        <li><b>피어리스 밴:</b> 리플레이나 결과창을 올린 세트의 챔피언이 시리즈 화면에 포지션별로 표시됩니다.</li>
+        <li><b>중간에 사람이 바뀌면:</b> 아래 <b>선수 교체</b>. 점수는 그대로이고, 들어온 선수가 팀·포지션을 이어받습니다.</li>
+        <li><b>지각:</b> 아래에서 선수와 점수(−10/−20/−30)를 고르고 <b>지각</b>을 두 번 누릅니다. 취소는 선수 편집에서 합니다.</li>
+        <li>시리즈가 끝나면 <b>같은 팀으로 한 번 더</b> 또는 <b>결과 닫기</b>. 끝난 시리즈는 방장이 아니어도 누를 수 있습니다.</li>
       </ul>
 
-      <h3>점수 규칙</h3>
+      <h3>5. 점수 규칙</h3>
       <ul>
-        <li><b>MMR:</b> 팀 평균끼리 비교해 이길 확률을 계산하고, 예상보다 잘하면 많이 오르고 못하면 많이 내려갑니다. 비등한 판은 ±16 정도입니다.</li>
-        <li><b>배치:</b> 처음 10판은 1.5배로 크게 움직여 빨리 자리를 찾습니다.</li>
-        <li><b>연승가속 / 연패가속:</b> 세트 n연승 중 또 이기면 ×(1 + 0.1n), n연패 중 또 지면 같은 배율로 더 깎입니다. 2연속부터 적용합니다.</li>
-        <li><b>용맹의 방패:</b> 선호 포지션이 아닌 곳에 배정돼 지면 감점이 절반입니다. 팀 카드에 <b>방패</b>로 표시됩니다. 시리즈 화면의 <b>용맹의 방패 ON/OFF</b>로 방장이 끌 수 있고, 다음 기록부터 적용됩니다.</li>
-        <li><b>순위</b> 탭의 전적·연속·승률은 시리즈 기준, 세트 전적은 따로 보여 줍니다.</li>
+        <li><b>MMR:</b> 두 팀 평균으로 이길 확률을 계산해, 예상보다 잘하면 많이 오르고 못하면 많이 내려갑니다. 비등한 판은 ±16 정도입니다.</li>
+        <li><b>배치:</b> 처음 10판은 1.5배로 크게 움직입니다.</li>
+        <li><b>연승·연패 가속:</b> 세트 n연승 중 또 이기면 ×(1 + 0.1n), n연패 중 또 지면 같은 배율로 더 깎입니다(2연속부터).</li>
+        <li><b>용맹의 방패:</b> 선호 밖 포지션으로 가서 지면 감점 절반. 방장이 시리즈 화면에서 <b>ON/OFF</b>할 수 있습니다.</li>
+        <li><b>순위</b>의 전적·연속·승률은 시리즈 기준이고, 세트 전적은 따로 표시합니다.</li>
       </ul>
 
-      <h3>실수했을 때</h3>
+      <h3>6. 통계와 기록</h3>
       <ul>
-        <li><b>기록</b> 탭의 경기 카드에서 <b>삭제</b>를 누르면 MMR과 전적이 되돌아가고 경기는 <b>휴지통</b>으로 갑니다. 휴지통에서 <b>복원</b>할 수 있습니다.</li>
-        <li>이전 경기를 지우면 그 경기의 증감만 빠지고 연승 기록은 그대로입니다.</li>
+        <li><b>기록</b> 탭: 최근 30경기. 경기 카드에서 <b>리플레이 올리기</b>(PC) 또는 <b>결과창 올리기</b>(스크린샷, 폰 가능)로 통계를 붙입니다.</li>
+        <li><b>통계</b> 탭: 선수별 평균 KDA·CS·딜량, 모스트 챔피언, 많이 나온 챔피언.</li>
+      </ul>
+
+      <h3>7. 실수했을 때</h3>
+      <ul>
+        <li>기록 탭에서 경기를 <b>삭제</b>하면 MMR·전적이 되돌아가고 <b>휴지통</b>으로 갑니다. 휴지통에서 <b>복원</b>할 수 있습니다.</li>
+        <li>이전 경기를 지우면 그 경기 점수만 빠지고, 연승 기록은 그대로입니다.</li>
+        <li><b>초기화</b>(두 번 눌러야 실행)는 참가자 선택과 짜인 팀만 지우고, 기록·MMR은 그대로입니다.</li>
       </ul>
 
       <h3>주의</h3>
       <ul>
-        <li>오른쪽 위가 <b>● 연결됨</b>이어야 모두와 같은 데이터를 봅니다. <b>연결 안 됨</b>이면 새로고침하세요.</li>
-        <li>링크를 아는 사람은 누구나 수정할 수 있으니 단톡방 밖으로 공유하지 마세요.</li>
+        <li>링크를 아는 사람은 누구나 수정할 수 있으니 단톡방 밖으로 공유하지 마세요. 로그인은 편의 기능이지 보안이 아닙니다.</li>
       </ul>
     </div>
   </section>
@@ -1037,7 +1041,7 @@ const repo = {
     const finished = score[winner] >= winsOf(s);
     const next = { ...s, score, done: finished, winner: finished ? winner : null }; // 끝나도 결과를 화면에 남긴다
     const mid = s.sid + '-g' + game;
-    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, winner, series: s.sid, game, wins: winsOf(s), ...(meName() ? { by: meName() } : {}), ...extra };
+    const match = { ts, blue: s.blue, red: s.red, names, roles: s.roles, winner, series: s.sid, game, wins: winsOf(s), mode: s.mode || '', edited: !!s.edited, ...(meName() ? { by: meName() } : {}), ...extra };
     if (this.kind === 'firebase') {
       const inc = firebase.firestore.FieldValue.increment, sref = this.db.doc('series/current'), mref = this.db.doc('matches/' + mid);
       await this.db.runTransaction(async t => {
@@ -1152,8 +1156,8 @@ const repo = {
 };
 function seriesDoc(x, ts) {
   if (!x) return { active: false, ts };
-  const { sid, blue, red, roles, key, score, done, winner, host, noShield } = x;
-  return { sid, blue, red, roles, key: key || '', score, wins: winsOf(x), done: !!done, winner: winner || null, host: host || null, noShield: !!noShield, active: true, ts };
+  const { sid, blue, red, roles, key, score, done, winner, host, noShield, mode, edited } = x;
+  return { sid, blue, red, roles, key: key || '', score, wins: winsOf(x), done: !!done, winner: winner || null, host: host || null, noShield: !!noShield, mode: mode || '', edited: !!edited, active: true, ts };
 }
 
 // ---------- 화면 상태
@@ -1303,7 +1307,9 @@ function renderTeams() {
   };
   res.hidden = false;
   const dis = state.busy || !canAct ? 'disabled' : '';
-  const hostBar = `<div class="hostbar">${s.host ? `방장 <b>${esc(hostP ? hostP.name : '알 수 없음')}</b>${isHost ? ' (나)' : s.done ? '' : ' · 보기 전용'}` : '방장 없음 · 처음 조작하는 사람이 방장'}${!isHost && !s.done && state.me && state.me !== 'guest' ? ` <button class="small${state.confirmTake ? ' danger' : ''}" id="btnTakeHost" ${state.busy ? 'disabled' : ''}>${state.confirmTake ? '한 번 더 누르면 넘겨받기' : '방장 넘겨받기'}</button>` : ''}</div>`;
+  const MODE_LABEL = { auto: '자동', draft: '드래프트' };
+  const modeTag = s.mode ? `<span class="tag" data-tip="${s.mode === 'auto' ? '자동 팀 짜기로 만든 팀입니다.' : '토너먼트 드래프트로 직접 뽑은 팀입니다.'}${s.edited ? ' 이후 선수 교환·교체로 팀이 바뀌었습니다.' : ''}">${MODE_LABEL[s.mode] || s.mode}${s.edited ? '·수정' : ''}</span>` : '';
+  const hostBar = `<div class="hostbar">${modeTag}${s.host ? `방장 <b>${esc(hostP ? hostP.name : '알 수 없음')}</b>${isHost ? ' (나)' : s.done ? '' : ' · 보기 전용'}` : '방장 없음 · 처음 조작하는 사람이 방장'}${!isHost && !s.done && state.me && state.me !== 'guest' ? ` <button class="small${state.confirmTake ? ' danger' : ''}" id="btnTakeHost" ${state.busy ? 'disabled' : ''}>${state.confirmTake ? '한 번 더 누르면 넘겨받기' : '방장 넘겨받기'}</button>` : ''}</div>`;
   res.innerHTML = `${hostBar}
     <div class="dbanner"><div class="dtitle">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : played ? `${boLabel(winsOf(s))} · ${played + 1}세트` : `<button class="small" id="btnBo" ${dis} title="1세트 전에만 바꿀 수 있습니다">${boLabel(winsOf(s))} ⇄</button> · 1세트`}</div>
       <div class="dcount num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></div></div>
@@ -1451,7 +1457,7 @@ function renderHistory() {
     : `<button class="small danger" data-del="${esc(m.id)}" ${dis}>삭제</button>`;
   el.innerHTML = `<div class="row between"><h2>경기 기록</h2><span class="muted">최근 ${repo.matches.length}경기</span></div>
     ${repo.matches.map(m => `<div class="match">
-      <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}${m.by ? ` <span class="muted">· 기록 ${esc(m.by)}</span>` : ''}</span>
+      <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}${m.mode ? ` <span class="muted">· ${m.mode === 'auto' ? '자동' : '드래프트'}${m.edited ? '·수정' : ''}</span>` : ''}${m.by ? ` <span class="muted">· 기록 ${esc(m.by)}</span>` : ''}</span>
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
       ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : ''}
@@ -1543,7 +1549,7 @@ function makeSplit(ids) {
   if (!p) { toast('같은 팀/다른 팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
   state.lastKey = p.key;
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
-  run(() => repo.updateSeries(repo.series, () => ({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })));
+  run(() => repo.updateSeries(repo.series, () => ({ blue: p.blue, red: p.red, roles: p.roles, key: p.key, sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins(), mode: 'auto' })));
 }
 function rolesFor(blue, red, map) {
   const prefs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].pos || []]));
@@ -1651,7 +1657,7 @@ $('draft').addEventListener('click', e => {
     const map = pmap(), { blue, red } = draftTeams(d);
     if (blue.length !== red.length || blue.length + red.length !== state.selected.size) return;
     state.swapId = null;
-    run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })))
+    run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins(), mode: 'draft' })))
       .then(ok => { if (ok && state.draft === d) { state.draft = null; renderTeams(); } });
     return;
   } else if (btn.dataset.draft) {
@@ -1684,7 +1690,8 @@ function exchange(c, sw) {
   if (sameTeams) { blue = c.blue; red = c.red; } // 같은 팀 안 교환은 포지션만 바뀐다
   const ids = new Set([...blue, ...red]);
   for (const k of Object.keys(roles)) if (!ids.has(k)) delete roles[k];
-  return { ...c, blue, red, roles, key: sameTeams ? c.key : '' };
+  // 팀 구성이 바뀌면(교환·교체·리플레이 맞추기) 자동으로 짠 팀이 아니게 되므로 edited 표시(평가용)
+  return { ...c, blue, red, roles, key: sameTeams ? c.key : '', edited: !!c.edited || !sameTeams };
 }
 // 선수 교체: 시리즈 점수는 그대로, 들어온 선수가 나간 선수의 팀·포지션을 이어받는다. MMR은 다음 세트부터
 function subPlayer(out, inn) {
@@ -1872,7 +1879,7 @@ $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnClose') { run(() => repo.updateSeries(repo.series, () => (null))); return; }
   if (e.target.id === 'btnAgain') {
     const s = repo.series;
-    run(() => repo.updateSeries(repo.series, () => ({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s) })));
+    run(() => repo.updateSeries(repo.series, () => ({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s), mode: s.mode || '', edited: !!s.edited })));
     return;
   }
   if (e.target.id === 'btnEndSeries') { if (await run(() => repo.updateSeries(repo.series, () => (null)))) toast('시리즈를 종료했습니다.'); return; }
