@@ -451,7 +451,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
       <ol>
         <li>오늘 참가자 이름을 누릅니다. 2~10명, 짝수여야 합니다. 카톡 글(@멘션, 성까지 붙인 이름도 됨)을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣으면 이름이 한 번에 선택됩니다. 못 찾은 이름은 아래에서 누구인지 고르면 다음부터 자동으로 인식합니다.</li>
         <li>필요하면 <b>+ 같은 팀 묶기</b>(듀오) 또는 <b>+ 다른 팀 나누기</b>로 조건을 넣습니다.</li>
-        <li><b>자동</b>은 평균 MMR이 가장 비슷하고 선호 포지션이 잘 맞는 조합을 고릅니다. <b>토너먼트 드래프트</b>는 블루·레드 팀장을 먼저 고른 뒤 블루부터 1·2·2·2·1명씩 번갈아 지명합니다(포지션은 자동 배정 후 같은 팀끼리 눌러 교환).</li>
+        <li><b>자동</b>은 평균 MMR이 비슷한 조합 중에서 같은 포지션끼리 실력 차이가 작고, 선호 포지션이 잘 맞고, 고수·하수가 한 팀에 몰리지 않고, 최근에 같은 팀이었던 사람이 덜 겹치는 조합을 고릅니다. <b>토너먼트 드래프트</b>는 블루·레드 팀장을 먼저 고른 뒤 블루부터 1·2·2·2·1명씩 번갈아 지명합니다(포지션은 자동 배정 후 같은 팀끼리 눌러 교환).</li>
         <li>선수를 누른 뒤 <b>같은 팀</b> 선수를 누르면 둘의 포지션이 바뀝니다(시리즈 중 언제나). <b>상대 팀</b> 선수를 누르면 서로 자리를 그대로 맞바꿔 팀이 바뀝니다(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
         <li>중간에 사람이 바뀌면 승리 버튼 아래 <b>선수 교체</b>로 나가는 선수와 들어오는 선수를 고릅니다. 시리즈 점수는 그대로이고, 들어온 선수가 같은 팀·같은 포지션을 이어받아 다음 세트부터 MMR이 반영됩니다.</li>
         <li>지각한 사람은 팀 화면 아래에서 고르고 점수(−10/−20/−30)를 고른 뒤 <b>지각</b> 버튼을 두 번 누르면 바로 MMR이 깎이고 순위에 <b>지각</b> 딱지가 붙습니다. 잘못 눌렀으면 선수 탭 편집에서 취소합니다.</li>
@@ -632,8 +632,32 @@ function fitsCons(s, cons, inSel) {
     && (cons.diff || []).every(([x, y]) => !inSel(x) || !inSel(y) || A.has(x) !== A.has(y));
 }
 
-// 조건을 만족하는 조합이 없으면 null
-function pickSplit(players, lastKey, rnd = Math.random, cons = {}) {
+// 팀 불균형 점수(낮을수록 좋음). 평균만 같고 체감은 불공평한 조합을 피한다
+//  avg: 평균 차이(비선호 포지션은 OFF_PENALTY만큼 낮은 실력으로 계산)
+//  lane: 같은 포지션끼리 차이의 평균(한 라인이 일방적인 구도)
+//  spread: 양 팀 최고점끼리·최저점끼리 차이의 평균(고수와 하수가 한 팀에 몰리는 구도)
+//  off: 비선호 배정 인원, rep: 최근 시리즈에서 같은 팀이었던 쌍(직전 1, 그 전 0.5)
+const OFF_PENALTY = 50;
+const SPLIT_W = { lane: 0.2, spread: 0.1, off: 10, rep: 0.5 };
+function splitCost(s, roles, prefs, mmrs, recent = []) {
+  const isOff = id => (prefs[id] || []).length > 0 && !prefs[id].includes(roles[id]);
+  const eff = id => mmrs[id] - (isOff(id) ? OFF_PENALTY : 0);
+  const mean = ids => ids.reduce((x, id) => x + eff(id), 0) / ids.length;
+  const byRole = ids => Object.fromEntries(ids.map(id => [roles[id], eff(id)]));
+  const ra = byRole(s.a), rb = byRole(s.b), lanes = POS_KEYS.filter(k => k in ra && k in rb);
+  const lane = lanes.length ? lanes.reduce((x, k) => x + Math.abs(ra[k] - rb[k]), 0) / lanes.length : 0;
+  const ext = ids => { const v = ids.map(id => mmrs[id]); return [Math.max(...v), Math.min(...v)]; };
+  const [ha, la] = ext(s.a), [hb, lb] = ext(s.b), spread = (Math.abs(ha - hb) + Math.abs(la - lb)) / 2;
+  const off = [...s.a, ...s.b].filter(isOff).length;
+  const A = new Set(s.a), together = (x, y) => A.has(x) === A.has(y);
+  let rep = 0;
+  recent.slice(0, 2).forEach((teams, k) => { for (const t of teams) for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) if (mmrs[t[i]] !== undefined && mmrs[t[j]] !== undefined && together(t[i], t[j])) rep += k ? 0.5 : 1; });
+  const avg = Math.abs(mean(s.a) - mean(s.b));
+  return { avg, lane, spread, off, rep, cost: avg + SPLIT_W.lane * lane + SPLIT_W.spread * spread + SPLIT_W.off * off + SPLIT_W.rep * rep };
+}
+// 조건을 만족하는 조합이 없으면 null. recent: 최근 시리즈의 팀 [[블루 ids, 레드 ids], ...] (최신 먼저)
+// 평균 차이가 최소 + POS_SLACK 안인 조합만 후보로 두고(평균이 크게 벌어지지 않게), 불균형 점수가 가장 낮은 것 + 5점 이내 상위 8개 중 무작위
+function pickSplit(players, lastKey, rnd = Math.random, cons = {}, recent = []) {
   const sorted = [...players].sort((x, y) => (x.id < y.id ? -1 : 1));
   const prefs = Object.fromEntries(players.map(p => [p.id, p.pos || []]));
   const mmrs = Object.fromEntries(players.map(p => [p.id, p.mmr]));
@@ -643,15 +667,15 @@ function pickSplit(players, lastKey, rnd = Math.random, cons = {}) {
   const near = all.filter(s => s.diff <= all[0].diff + POS_SLACK);
   for (const s of near) {
     const ra = assignRoles(s.a, prefs, mmrs), rb = assignRoles(s.b, prefs, mmrs);
-    s.off = ra.off + rb.off; s.roles = { ...ra.roles, ...rb.roles };
+    s.roles = { ...ra.roles, ...rb.roles };
+    Object.assign(s, splitCost(s, s.roles, prefs, mmrs, recent));
   }
-  const bestOff = Math.min(...near.map(s => s.off));
-  const fit = near.filter(s => s.off === bestOff);
-  let pool = fit.filter(s => s.diff <= fit[0].diff + 10).slice(0, 12);
+  near.sort((x, y) => x.cost - y.cost);
+  let pool = near.filter(s => s.cost <= near[0].cost + 5).slice(0, 8);
   if (pool.length > 1) pool = pool.filter(s => s.key !== lastKey);
   const s = pool[Math.floor(rnd() * pool.length)];
   const aBlue = rnd() < 0.5;
-  return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key, roles: s.roles, off: s.off };
+  return { blue: aBlue ? s.a : s.b, red: aBlue ? s.b : s.a, diff: s.diff, key: s.key, roles: s.roles, off: s.off, cost: s.cost };
 }
 
 // 연승/연패 가속: 세트 기준 n연속(2 이상) 중에 같은 결과가 나오면 ×(1 + 0.1n). 상한 없음
@@ -1504,7 +1528,10 @@ function makeSplit(ids) {
   const n = state.selected.size;
   if (n < 2 || n > 10 || n % 2) { toast('참가자를 2~10명, 짝수로 골라 주세요.'); renderTeams(); return; }
   const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [] }));
-  const p = pickSplit(players, repo.series ? repo.series.key : state.lastKey, Math.random, state.cons);
+  // 최근 시리즈 2개의 팀(같은 사람끼리 계속 붙지 않게)
+  const seen = new Set(), recent = [];
+  for (const m of repo.matches) { if (!m.series || seen.has(m.series)) continue; seen.add(m.series); recent.push([m.blue || [], m.red || []]); if (recent.length >= 2) break; }
+  const p = pickSplit(players, repo.series ? repo.series.key : state.lastKey, Math.random, state.cons, recent);
   if (!p) { toast('같은 팀/다른 팀 조건을 모두 만족하는 조합이 없습니다. 조건을 확인하세요.'); return; }
   state.lastKey = p.key;
   if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
