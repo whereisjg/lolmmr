@@ -295,6 +295,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .pos-pick button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 .pos-pick button[data-rank="1"]::after { content: " 주"; font-size: 11px; opacity: .75; }
 .pos-pick button[data-rank="2"]::after { content: " 부"; font-size: 11px; opacity: .75; }
+.avoid-pick button[aria-pressed="true"] { background: var(--red-soft); color: var(--red); border-color: var(--red); }
 .role { display: inline-block; min-width: 2.6em; font-size: 12px; color: var(--muted); font-weight: 700; }
 .role.off { color: var(--gold); }
 .empty { text-align: center; padding: 28px 12px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: center; }
@@ -443,6 +444,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
         <li><b>선수</b> 탭에서 본인 이름의 <b>편집</b>을 누릅니다.</li>
         <li><b>선호 포지션</b>을 최대 2개 고릅니다. 먼저 고른 쪽이 주 포지션입니다. 주 포지션만 고르면 순위에 빨간 <b>비겁자</b> 딱지가 붙습니다.</li>
         <li><b>롤 닉네임</b>을 넣습니다. 여러 계정이면 쉼표로 구분하고 #태그는 빼도 됩니다. 리플레이·결과창 자동 연결에 꼭 필요합니다.</li>
+        <li>정말 못 하는 자리가 있으면 <b>기피 포지션</b>을 1개 고릅니다. 자동 팀 짜기가 웬만하면 그 자리에 배정하지 않습니다. 점수 계산과는 상관없습니다.</li>
         <li><b>프로필 사진</b>에 좋아하는 챔피언 이름을 넣거나, 아래 <b>소환사 아이콘 검색</b>에서 팀 이름(T1, Gen.G 등)을 찾아 누르면 칩·팀 카드·드래프트에 나옵니다. 비우면 이름 첫 글자.</li>
       </ol>
 
@@ -515,6 +517,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
         <label class="field"><span>MMR</span><input id="editMmr" type="number" inputmode="numeric" step="1" min="0" max="4000"></label>
       </div>
       <div class="field"><span>선호 포지션 (최대 2개, 먼저 고른 쪽이 주 포지션)</span><div class="pos-pick" id="editPos"></div></div>
+      <div class="field"><span>기피 포지션 (1개, 자동 팀 짜기에서 웬만하면 배정하지 않음)</span><div class="pos-pick avoid-pick" id="editAvoid"></div></div>
       <label class="field"><span>롤 닉네임 (여러 계정이면 쉼표로 구분, #태그는 빼도 됨)</span><input id="editRiot" maxlength="200" autocomplete="off" placeholder="예: Hide on bush, 부캐닉"></label>
       <label class="field"><span>프로필 사진 (챔피언 이름, 비우면 이름 첫 글자)</span><span class="row" style="flex-wrap:nowrap"><span class="cav" id="editFace"></span><input id="editIcon" list="champList" maxlength="30" autocomplete="off" placeholder="예: 아리" style="flex:1"></span><datalist id="champList"></datalist></label>
       <div class="field"><span>또는 소환사 아이콘 검색 (예: T1, Gen.G, 월드)</span><input id="iconSearch" maxlength="30" autocomplete="off" placeholder="팀 이름 검색"><div id="iconResults" class="icon-grid"></div></div>
@@ -602,25 +605,26 @@ function splitAll(players) {
 // 한 팀 안에서 서로 다른 포지션 배정. 선호 없음 = 어디든 괜찮음
 // 우선순위: ① 선호 밖 배정(off) 최소 ② 부 포지션 배정(sub) 최소, 즉 주 포지션 최대 ③ 그래도 같으면 MMR 높은 선수가 원하는 자리
 // ③은 MMR 높은 순으로 탐색하고 비용이 더 낮을 때만 바꿔서 얻는다(먼저 찾은 같은 비용 배치 = MMR 높은 선수 우선)
-function assignRoles(ids, prefs, mmr = {}) {
+// avoid: {id: 기피 포지션}. 기피 자리는 다른 방법이 없을 때만(비용 1000)
+function assignRoles(ids, prefs, mmr = {}, avoid = {}) {
   const order0 = [...ids].sort((a, b) => (mmr[b] || 0) - (mmr[a] || 0));
   let best = null;
   const roles = {};
-  const go = (i, used, off, sub) => {
-    const cost = off * 100 + sub;
+  const go = (i, used, off, sub, av) => {
+    const cost = av * 1000 + off * 100 + sub;
     if (best && cost >= best.cost) return;
-    if (i === order0.length) { best = { cost, off, sub, roles: { ...roles } }; return; }
-    const id = order0[i], pref = prefs[id] || [];
-    const order = pref.length ? [...pref, ...POS_KEYS.filter(p => !pref.includes(p))] : POS_KEYS;
+    if (i === order0.length) { best = { cost, off, sub, av, roles: { ...roles } }; return; }
+    const id = order0[i], pref = prefs[id] || [], no = avoid[id];
+    const order = [...pref, ...POS_KEYS.filter(p => !pref.includes(p) && p !== no), ...(no && !pref.includes(no) ? [no] : [])];
     for (const p of order) {
       if (used.has(p)) continue;
       used.add(p); roles[id] = p;
       const k = pref.indexOf(p);
-      go(i + 1, used, off + (pref.length && k < 0 ? 1 : 0), sub + (k > 0 ? 1 : 0));
+      go(i + 1, used, off + (pref.length && k < 0 ? 1 : 0), sub + (k > 0 ? 1 : 0), av + (p === no ? 1 : 0));
       used.delete(p);
     }
   };
-  go(0, new Set(), 0, 0);
+  go(0, new Set(), 0, 0, 0);
   return best;
 }
 
@@ -638,22 +642,24 @@ function fitsCons(s, cons, inSel) {
 //  spread: 양 팀 최고점끼리·최저점끼리 차이의 평균(고수와 하수가 한 팀에 몰리는 구도)
 //  off: 비선호 배정 인원, rep: 최근 시리즈에서 같은 팀이었던 쌍(직전 1, 그 전 0.5)
 const OFF_PENALTY = 50;
-const SPLIT_W = { lane: 0.2, spread: 0.1, off: 10, rep: 0.5 };
-function splitCost(s, roles, prefs, mmrs, recent = []) {
+const SPLIT_W = { lane: 0.2, spread: 0.1, off: 10, rep: 0.5, avoid: 40 };
+//  avoid: 기피 포지션 배정 인원(그 선수는 OFF_PENALTY 두 배로 낮게 계산)
+function splitCost(s, roles, prefs, mmrs, recent = [], avoid = {}) {
   const isOff = id => (prefs[id] || []).length > 0 && !prefs[id].includes(roles[id]);
-  const eff = id => mmrs[id] - (isOff(id) ? OFF_PENALTY : 0);
+  const isAv = id => !!avoid[id] && avoid[id] === roles[id];
+  const eff = id => mmrs[id] - (isAv(id) ? 2 * OFF_PENALTY : isOff(id) ? OFF_PENALTY : 0);
   const mean = ids => ids.reduce((x, id) => x + eff(id), 0) / ids.length;
   const byRole = ids => Object.fromEntries(ids.map(id => [roles[id], eff(id)]));
   const ra = byRole(s.a), rb = byRole(s.b), lanes = POS_KEYS.filter(k => k in ra && k in rb);
   const lane = lanes.length ? lanes.reduce((x, k) => x + Math.abs(ra[k] - rb[k]), 0) / lanes.length : 0;
   const ext = ids => { const v = ids.map(id => mmrs[id]); return [Math.max(...v), Math.min(...v)]; };
   const [ha, la] = ext(s.a), [hb, lb] = ext(s.b), spread = (Math.abs(ha - hb) + Math.abs(la - lb)) / 2;
-  const off = [...s.a, ...s.b].filter(isOff).length;
+  const off = [...s.a, ...s.b].filter(isOff).length, avd = [...s.a, ...s.b].filter(isAv).length;
   const A = new Set(s.a), together = (x, y) => A.has(x) === A.has(y);
   let rep = 0;
   recent.slice(0, 2).forEach((teams, k) => { for (const t of teams) for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) if (mmrs[t[i]] !== undefined && mmrs[t[j]] !== undefined && together(t[i], t[j])) rep += k ? 0.5 : 1; });
   const avg = Math.abs(mean(s.a) - mean(s.b));
-  return { avg, lane, spread, off, rep, cost: avg + SPLIT_W.lane * lane + SPLIT_W.spread * spread + SPLIT_W.off * off + SPLIT_W.rep * rep };
+  return { avg, lane, spread, off, avoid: avd, rep, cost: avg + SPLIT_W.lane * lane + SPLIT_W.spread * spread + SPLIT_W.off * off + SPLIT_W.avoid * avd + SPLIT_W.rep * rep };
 }
 // 조건을 만족하는 조합이 없으면 null. recent: 최근 시리즈의 팀 [[블루 ids, 레드 ids], ...] (최신 먼저)
 // 평균 차이가 최소 + POS_SLACK 안인 조합만 후보로 두고(평균이 크게 벌어지지 않게), 불균형 점수가 가장 낮은 것 + 5점 이내 상위 8개 중 무작위
@@ -661,14 +667,15 @@ function pickSplit(players, lastKey, rnd = Math.random, cons = {}, recent = []) 
   const sorted = [...players].sort((x, y) => (x.id < y.id ? -1 : 1));
   const prefs = Object.fromEntries(players.map(p => [p.id, p.pos || []]));
   const mmrs = Object.fromEntries(players.map(p => [p.id, p.mmr]));
+  const avoid = Object.fromEntries(players.filter(p => p.avoid).map(p => [p.id, p.avoid]));
   const sel = new Set(players.map(p => p.id)), inSel = id => sel.has(id);
   const all = splitAll(sorted).filter(s => fitsCons(s, cons, inSel));
   if (!all.length) return null;
   const near = all.filter(s => s.diff <= all[0].diff + POS_SLACK);
   for (const s of near) {
-    const ra = assignRoles(s.a, prefs, mmrs), rb = assignRoles(s.b, prefs, mmrs);
+    const ra = assignRoles(s.a, prefs, mmrs, avoid), rb = assignRoles(s.b, prefs, mmrs, avoid);
     s.roles = { ...ra.roles, ...rb.roles };
-    Object.assign(s, splitCost(s, s.roles, prefs, mmrs, recent));
+    Object.assign(s, splitCost(s, s.roles, prefs, mmrs, recent, avoid));
   }
   near.sort((x, y) => x.cost - y.cost);
   let pool = near.filter(s => s.cost <= near[0].cost + 5).slice(0, 8);
@@ -1286,7 +1293,8 @@ function renderTeams() {
     const rows = [...ids].sort((a, b) => rank(a) - rank(b)).map(id => {
       const p = map[id], r = s.roles[id], off = !s.noShield && isOffRole(p, r), pos = p.pos || [];
       const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
-      const tags = `${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
+      const avd = !!p.avoid && p.avoid === r;
+      const tags = `${avd && !s.done ? ' <span class="kda down" data-tip="기피 포지션: 이 선수가 피하고 싶다고 고른 자리에 배정됐습니다. 같은 팀 선수를 눌러 바꿀 수 있습니다.">기피</span>' : ''}${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
       return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}${id === state.me ? ' me' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
     }).join('');
     const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
@@ -1527,7 +1535,7 @@ function makeSplit(ids) {
   if (ids) { state.selected = new Set(ids.filter(id => map[id])); saveSel(); }
   const n = state.selected.size;
   if (n < 2 || n > 10 || n % 2) { toast('참가자를 2~10명, 짝수로 골라 주세요.'); renderTeams(); return; }
-  const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [] }));
+  const players = [...state.selected].map(id => ({ id, mmr: map[id].mmr, pos: map[id].pos || [], avoid: map[id].avoid || '' }));
   // 최근 시리즈 2개의 팀(같은 사람끼리 계속 붙지 않게)
   const seen = new Set(), recent = [];
   for (const m of repo.matches) { if (!m.series || seen.has(m.series)) continue; seen.add(m.series); recent.push([m.blue || [], m.red || []]); if (recent.length >= 2) break; }
@@ -1540,7 +1548,8 @@ function makeSplit(ids) {
 function rolesFor(blue, red, map) {
   const prefs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].pos || []]));
   const mmrs = Object.fromEntries([...blue, ...red].map(id => [id, map[id].mmr]));
-  return { ...assignRoles(blue, prefs, mmrs).roles, ...assignRoles(red, prefs, mmrs).roles };
+  const avoid = Object.fromEntries([...blue, ...red].filter(id => map[id].avoid).map(id => [id, map[id].avoid]));
+  return { ...assignRoles(blue, prefs, mmrs, avoid).roles, ...assignRoles(red, prefs, mmrs, avoid).roles };
 }
 // 토너먼트 드래프트: 팀장 2명(state.draft.cap) → 블루부터 1·2·2·…·(남은 수) 순서로 번갈아 지명(picks). 포지션은 rolesFor 자동
 function draftOrder(m) { const o = ['blue']; let s = 'red'; while (o.length < m) { o.push(s, s); s = s === 'red' ? 'blue' : 'red'; } return o.slice(0, m); }
@@ -2225,7 +2234,7 @@ tierOptions($('addTier')); tierOptions($('bulkTier'));
 const nameTaken = (name, exceptId) => repo.players.some(p => p.id !== exceptId && p.name.toLowerCase() === name.toLowerCase());
 const fresh = (name, mmr, pos = []) => ({ name, mmr, pos, games: 0, wins: 0, losses: 0, ts: Date.now() });
 
-function posText(p) { return (p.pos || []).length ? p.pos.map(k => POS_LABEL[k]).join('/') : '포지션 미정'; }
+function posText(p) { return ((p.pos || []).length ? p.pos.map(k => POS_LABEL[k]).join('/') : '포지션 미정') + (p.avoid ? ` · 기피 ${POS_LABEL[p.avoid]}` : ''); }
 function getPos(el) { return el.dataset.v ? el.dataset.v.split(',') : []; }
 function setPos(el, v) {
   el.dataset.v = v.join(',');
@@ -2240,12 +2249,22 @@ function posPicker(el) {
     const b = e.target.closest('[data-p]'); if (!b) return;
     const k = b.dataset.p; let v = getPos(el);
     if (v.includes(k)) v = v.filter(x => x !== k);
+    else if (el.id === 'editPos' && $('editAvoid').dataset.v === k) { toast('기피 포지션은 선호로 고를 수 없습니다. 기피를 먼저 해제하세요.'); return; }
     else if (v.length >= 2) { toast('선호 포지션은 2개까지 고를 수 있습니다.'); return; }
     else v.push(k);
     setPos(el, v);
   });
 }
 posPicker($('addPos')); posPicker($('editPos'));
+// 기피 포지션: 하나만, 다시 누르면 해제. 선호 포지션과 겹치면 안 됨
+$('editAvoid').innerHTML = POSITIONS.map(([k, l]) => `<button type="button" data-a="${k}" aria-pressed="false">${l}</button>`).join('');
+const setAvoid = k => { $('editAvoid').dataset.v = k || ''; $('editAvoid').querySelectorAll('[data-a]').forEach(b => b.setAttribute('aria-pressed', b.dataset.a === k)); };
+$('editAvoid').addEventListener('click', e => {
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const k = b.dataset.a;
+  if (getPos($('editPos')).includes(k)) { toast('선호 포지션은 기피로 고를 수 없습니다.'); return; }
+  setAvoid($('editAvoid').dataset.v === k ? '' : k);
+});
 
 $('addForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -2273,7 +2292,7 @@ $('playerList').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const p = pmap()[b.dataset.edit]; if (!p) return;
   state.editId = p.id; state.confirmDelete = false; state.editMmr0 = p.mmr;
-  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
+  $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); setAvoid(p.avoid || ''); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
   $('editIcon').value = !p.icon ? '' : p.icon.startsWith('pi:') ? '아이콘 ' + p.icon.slice(3) : (DD && DD.champ[p.icon]) || p.icon; $('iconSearch').value = ''; $('iconResults').innerHTML = ''; $('editFace').innerHTML = face(p);
   renderEditLate(p); renderMmrLog(p);
   $('editPanel').hidden = false; renderPlayers();
@@ -2319,7 +2338,9 @@ $('btnEditSave').addEventListener('click', async () => {
   if (icon === null) { toast('챔피언 이름을 목록에서 골라 주세요.'); return; }
   // MMR 칸을 안 바꿨으면 MMR은 건드리지 않는다(편집 창을 연 사이 기록된 경기 점수를 덮어쓰지 않게)
   const mmrEdited = mmr !== state.editMmr0;
-  const patch = { name, icon, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() };
+  const pos = getPos($('editPos')), avoid = $('editAvoid').dataset.v || '';
+  if (avoid && pos.includes(avoid)) { toast('같은 포지션을 선호와 기피로 함께 고를 수 없습니다.'); return; }
+  const patch = { name, icon, avoid, pos, riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() };
   // MMR을 바꿨으면 최신 값 기준으로 이전→이후를 mmrLog에 남긴다
   if (await run(() => repo.patchPlayer(id, q => ({ ...patch, ...(mmrEdited ? { mmr } : {}), ...(mmrEdited && q.mmr !== mmr ? { mmrLog: mmrLogAdd(q, 'manual', mmr) } : {}) })))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
