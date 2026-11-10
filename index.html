@@ -286,7 +286,8 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .plist li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .plist li:last-child { border-bottom: 0; }
 .plist .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.plist .num { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.plist .num { color: var(--muted); font-size: 13px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.plist li button { flex: none; }
 .edit { border: 1px solid var(--gold); background: var(--gold-soft); }
 .mmr-log { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; color: var(--muted); }
 .pos-pick { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -930,7 +931,7 @@ const repo = {
   // 방장(host): 시리즈를 만든 사람. 방장이 있으면 방장만 수정(takeover는 넘겨받기). 새 시리즈·방장 없는 시리즈는 수정한 사람이 방장
   async updateSeries(s, mutate, takeover = false) {
     const apply = c => {
-      if (c && c.host && c.host !== state.me && !takeover) throw { code: 'host' };
+      if (c && c.host && c.host !== state.me && !c.done && !takeover) throw { code: 'host' }; // 끝난 시리즈는 누구나 닫거나 새로 시작
       const n = mutate(c);
       // 새 시리즈의 방패 기본값은 이 기기에서 마지막으로 고른 값(localStorage mmr-shield)
       const fresh = n && !(c && c.sid === n.sid);
@@ -1013,6 +1014,7 @@ const repo = {
         const c = cur.exists ? cur.data() : null;
         // 다른 기기가 먼저 기록했거나 팀·포지션을 바꿨으면 멈춘다(예전 팀으로 기록되는 것을 막음)
         if (had.exists || !c || !c.active || c.done || !sameSeries(c, s)) throw { code: 'stale' };
+        if (c.host && c.host !== state.me) throw { code: 'host' }; // 화면이 갱신되기 전에 방장이 바뀐 경우
         // 연승/연패는 세트가 아니라 시리즈 결과로 센다. 시리즈가 끝나는 세트에서만 갱신
         const snaps = await Promise.all(ids.map(id => t.get(this.db.doc('players/' + id))));
         if (snaps.some(d => !d.exists)) throw { code: 'missing' };
@@ -1021,7 +1023,7 @@ const repo = {
         const prev = finished ? Object.fromEntries(ids.map((id, i) => [id, (snaps[i].data() || {}).streak || 0])) : null;
         t.set(mref, { ...match, deltas, pBlue, prevSetStreak: prevSet, ...(prev ? { prevStreak: prev } : {}) });
         ids.forEach(id => t.update(this.db.doc('players/' + id), { mmr: inc(deltas[id]), games: inc(1), wins: inc(won(id) ? 1 : 0), losses: inc(won(id) ? 0 : 1), setStreak: nextStreak(prevSet[id], won(id)), ...(prev ? { streak: nextStreak(prev[id], won(id)), sWins: inc(won(id) ? 1 : 0), sLosses: inc(won(id) ? 0 : 1) } : {}), ts }));
-        t.set(sref, seriesDoc(next, ts));
+        t.set(sref, seriesDoc({ ...next, host: c.host }, ts));
       });
     } else {
       if (!sameSeries(this.series, s)) throw { code: 'stale' };
@@ -1128,7 +1130,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const signed = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '±0');
 const state = {
-  selected: new Set(JSON.parse(lsGet('mmr-sel') || '[]')),
+  selected: (() => { try { const a = JSON.parse(lsGet('mmr-sel') || '[]'); return new Set(Array.isArray(a) ? a : []); } catch (e) { return new Set(); } })(),
   cons: (() => { try { const c = JSON.parse(lsGet('mmr-cons') || 'null'); return c && c.same && c.diff ? c : { same: [], diff: [] }; } catch (e) { return { same: [], diff: [] }; } })(),
   picking: null, pick: new Set(), swapId: null, draft: null, upload: null, replayPlan: null,
   lastKey: null, confirmReset: false, busy: false, confirmDel: null, confirmPurge: null, editId: null, confirmDelete: false
@@ -1181,6 +1183,8 @@ state.me = ssGet('mmr-me') || null;
 function meName() { const p = state.me && state.me !== 'guest' && pmap()[state.me]; return p ? p.name : ''; }
 function renderWhoami() {
   const el = $('whoami'), b = $('btnMe');
+  // 로그인한 선수가 삭제됐으면(목록에 없으면) 로그아웃. 목록을 받기 전에는 판단하지 않는다
+  if (state.me && state.me !== 'guest' && repo.players.length && !pmap()[state.me]) { state.me = null; try { sessionStorage.removeItem('mmr-me'); } catch (e) {} }
   b.textContent = meName() ? meName() : state.me === 'guest' ? '게스트' : '이름 선택';
   const show = state.whoOpen || (!state.me && repo.mode !== 'loading' && repo.players.length > 0);
   el.hidden = !show; document.body.classList.toggle('who-open', show);
@@ -1190,9 +1194,8 @@ function renderWhoami() {
     <div class="dbtns"><button data-me="guest">게스트</button>${state.whoOpen && state.me ? '<button data-me-close>닫기</button>' : ''}</div></div>`;
 }
 $('whoami').addEventListener('click', e => {
-  const b = e.target.closest('[data-me],[data-me-close],[data-me-out]'); if (!b) return;
+  const b = e.target.closest('[data-me],[data-me-close]'); if (!b) return;
   if (b.dataset.me) { state.me = b.dataset.me; ssSet('mmr-me', state.me); }
-  if ('meOut' in b.dataset) { state.me = null; try { sessionStorage.removeItem('mmr-me'); } catch (e) {} }
   state.whoOpen = false; renderAll();
 });
 // 이름 버튼: 로그인 상태면 작은 메뉴(다른 이름으로 / 로그아웃), 아니면 로그인 화면
@@ -1247,6 +1250,7 @@ function renderTeams() {
   const eB = expected(rb, rr), pB = Math.round(eB * 100);
   // 같은 팀 포지션 교환은 시리즈 중 언제나, 상대 팀과 선수 교환은 1세트 전에만
   const hostP = s.host && map[s.host], isHost = !s.host || s.host === state.me;
+  const canAct = isHost || !!s.done; // 끝난 시리즈는 누구나 닫기·한 번 더·통계 추가
   const canSwap = !s.done && isHost;
   // 교체 선택칸: 지금 시리즈와 안 맞는 예전 선택은 지운다(브라우저가 첫 선수를 대신 고르는 것을 막음)
   if (state.subOut && !s.blue.includes(state.subOut) && !s.red.includes(state.subOut)) state.subOut = null;
@@ -1266,8 +1270,8 @@ function renderTeams() {
       ${s.done ? '' : `<div class="dswing num" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</div>`}</div>`;
   };
   res.hidden = false;
-  const dis = state.busy || !isHost ? 'disabled' : '';
-  const hostBar = `<div class="hostbar">${s.host ? `방장 <b>${esc(hostP ? hostP.name : '알 수 없음')}</b>${isHost ? ' (나)' : ' · 보기 전용'}` : '방장 없음 · 처음 조작하는 사람이 방장'}${!isHost && state.me && state.me !== 'guest' ? ` <button class="small${state.confirmTake ? ' danger' : ''}" id="btnTakeHost" ${state.busy ? 'disabled' : ''}>${state.confirmTake ? '한 번 더 누르면 넘겨받기' : '방장 넘겨받기'}</button>` : ''}</div>`;
+  const dis = state.busy || !canAct ? 'disabled' : '';
+  const hostBar = `<div class="hostbar">${s.host ? `방장 <b>${esc(hostP ? hostP.name : '알 수 없음')}</b>${isHost ? ' (나)' : s.done ? '' : ' · 보기 전용'}` : '방장 없음 · 처음 조작하는 사람이 방장'}${!isHost && !s.done && state.me && state.me !== 'guest' ? ` <button class="small${state.confirmTake ? ' danger' : ''}" id="btnTakeHost" ${state.busy ? 'disabled' : ''}>${state.confirmTake ? '한 번 더 누르면 넘겨받기' : '방장 넘겨받기'}</button>` : ''}</div>`;
   res.innerHTML = `${hostBar}
     <div class="dbanner"><div class="dtitle">${s.done ? `시리즈 종료 · <span class="${s.winner === 'blue' ? 'b' : 'r'}">${s.winner === 'blue' ? '블루' : '레드'} 승리</span>` : played ? `${boLabel(winsOf(s))} · ${played + 1}세트` : `<button class="small" id="btnBo" ${dis} title="1세트 전에만 바꿀 수 있습니다">${boLabel(winsOf(s))} ⇄</button> · 1세트`}</div>
       <div class="dcount num"><span class="b">${s.score.blue}</span> : <span class="r">${s.score.red}</span></div></div>
@@ -1407,7 +1411,7 @@ function renderHistory() {
     const r = (m.roles || {})[id];
     const st = (m.stats || {})[id];
     const pic = st && st.champion ? champPic(st.champion) : '';
-    return `<li><span class="nm">${r ? `<span class="role">${posIcon(r)}</span>` : ''}${pic ? `<span class="mpic" title="${esc(st.champion)}">${pic}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? '<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ' : ''}${signed(d)}</span></li>`;
+    return `<li><span class="nm">${r ? `<span class="role">${posIcon(r)}</span>` : ''}${pic ? `<span class="mpic" title="${esc(st.champion)}">${pic}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? `<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ` : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
   const delCtl = m => state.confirmDel === m.id
@@ -1610,8 +1614,9 @@ $('draft').addEventListener('click', e => {
     if (inSeries()) { toast('다른 사람이 이미 시리즈를 시작했습니다.'); return; }
     const map = pmap(), { blue, red } = draftTeams(d);
     if (blue.length !== red.length || blue.length + red.length !== state.selected.size) return;
-    state.draft = null; state.swapId = null;
-    run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })));
+    state.swapId = null;
+    run(() => repo.updateSeries(repo.series, () => ({ blue, red, roles: rolesFor(blue, red, map), key: '', sid: newId(), score: { blue: 0, red: 0 }, wins: nextWins() })))
+      .then(ok => { if (ok && state.draft === d) { state.draft = null; renderTeams(); } });
     return;
   } else if (btn.dataset.draft) {
     const id = btn.dataset.draft;
@@ -1790,10 +1795,11 @@ $('btnClearSel').addEventListener('click', async () => {
     return;
   }
   clearTimeout(resetTimer); state.confirmReset = false;
+  // 시리즈를 못 지우면(방장 아님·게스트) 아무것도 지우지 않는다
+  if (repo.series && !(await run(() => repo.updateSeries(repo.series, () => (null))))) { renderTeams(); return; }
   state.selected.clear(); saveSel();
   state.cons = { same: [], diff: [] }; saveCons();
-  state.picking = null; state.pick = new Set(); state.swapId = null;
-  if (repo.series) await run(() => repo.updateSeries(repo.series, () => (null)));
+  state.picking = null; state.pick = new Set(); state.swapId = null; state.draft = null;
   renderTeams(); toast('팀 짜기를 초기화했습니다.');
 });
 $('btnSplit').addEventListener('click', () => makeSplit());
@@ -1880,7 +1886,7 @@ function face(p) {
   }
   return esc([...((p && p.name) || '?')][0]);
 }
-lolNames().then(d => { if (d && d.ver) { DD = d; fillChampList(); renderAll(); if (state.draft) renderTeams(); } });
+lolNames().then(d => { if (d && d.ver) { DD = d; fillChampList(); renderAll(); if (state.stats && state.stats.data) renderStats(); } });
 function fillChampList() {
   const dl = $('champList'); if (!dl || !DD) return;
   dl.innerHTML = Object.entries(DD.champ).sort((a, b) => a[1].localeCompare(b[1], 'ko')).map(([, n]) => `<option value="${esc(n)}">`).join('');
@@ -1968,6 +1974,7 @@ $('replaySeriesInput').addEventListener('change', async e => {
   state.replayPlan = { loading: true, sid: s.sid, done: !!s.done }; renderTeams();
   try {
     const names = await lolNames(), map = pmap();
+    if ([...s.blue, ...s.red].some(id => !map[id])) throw new Error('삭제된 선수가 있습니다. 시리즈를 종료하고 팀을 다시 짜 주세요.');
     const fake = { blue: s.blue, red: s.red, names: Object.fromEntries([...s.blue, ...s.red].map(id => [id, map[id].name])) };
     const all = await repo.allMatches(); // 9. 한 번만 읽는다
     const known = new Set(all.map(m => m.statsMeta && m.statsMeta.gameId).filter(Boolean));
@@ -2238,7 +2245,7 @@ function closeEdit() { state.editId = null; state.confirmDelete = false; $('edit
 $('playerList').addEventListener('click', e => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
   const p = pmap()[b.dataset.edit]; if (!p) return;
-  state.editId = p.id; state.confirmDelete = false;
+  state.editId = p.id; state.confirmDelete = false; state.editMmr0 = p.mmr;
   $('editName').value = p.name; $('editMmr').value = p.mmr; setPos($('editPos'), p.pos || []); $('editRiot').value = (p.riotNames || []).join(', '); $('editAlias').value = (p.aliases || []).join(', ');
   $('editIcon').value = !p.icon ? '' : p.icon.startsWith('pi:') ? '아이콘 ' + p.icon.slice(3) : (DD && DD.champ[p.icon]) || p.icon; $('iconSearch').value = ''; $('iconResults').innerHTML = ''; $('editFace').innerHTML = face(p);
   renderEditLate(p); renderMmrLog(p);
@@ -2283,9 +2290,11 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
   const icon = champId($('editIcon').value);
   if (icon === null) { toast('챔피언 이름을 목록에서 골라 주세요.'); return; }
-  const patch = { name, mmr, icon, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() };
+  // MMR 칸을 안 바꿨으면 MMR은 건드리지 않는다(편집 창을 연 사이 기록된 경기 점수를 덮어쓰지 않게)
+  const mmrEdited = mmr !== state.editMmr0;
+  const patch = { name, icon, pos: getPos($('editPos')), riotNames: [...new Set($('editRiot').value.split(',').map(x => x.trim()).filter(Boolean))], aliases: [...new Set($('editAlias').value.split(',').map(x => x.trim()).filter(Boolean))], ts: Date.now() };
   // MMR을 바꿨으면 최신 값 기준으로 이전→이후를 mmrLog에 남긴다
-  if (await run(() => repo.patchPlayer(id, q => ({ ...patch, ...(q.mmr !== mmr ? { mmrLog: mmrLogAdd(q, 'manual', mmr) } : {}) })))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
+  if (await run(() => repo.patchPlayer(id, q => ({ ...patch, ...(mmrEdited ? { mmr } : {}), ...(mmrEdited && q.mmr !== mmr ? { mmrLog: mmrLogAdd(q, 'manual', mmr) } : {}) })))) { closeEdit(); toast('저장했습니다.'); renderPlayers(); }
 });
 $('editIcon').addEventListener('input', () => { const id = champId($('editIcon').value); $('editFace').innerHTML = face({ name: $('editName').value, icon: id || '' }); });
 // 소환사 아이콘 이름 목록: CommunityDragon(팬 운영, 한국어 제목). 그림은 Data Dragon profileicon. 처음 검색할 때 한 번 받음
@@ -2320,6 +2329,8 @@ $('iconResults').addEventListener('click', e => {
   $('iconResults').querySelectorAll('[data-pi]').forEach(x => x.classList.toggle('on', x === b));
 });
 $('btnEditDelete').addEventListener('click', async () => {
+  const sr = repo.series;
+  if (sr && !sr.done && [...sr.blue, ...sr.red].includes(state.editId)) { toast('진행 중인 시리즈에 있는 선수입니다. 교체하거나 시리즈를 끝낸 뒤 삭제하세요.'); return; }
   if (!state.confirmDelete) { state.confirmDelete = true; renderPlayers(); return; }
   const id = state.editId, name = $('editName').value;
   if (await run(() => repo.deletePlayer(id))) { state.selected.delete(id); saveSel(); closeEdit(); toast(`${name} 삭제됨`); }

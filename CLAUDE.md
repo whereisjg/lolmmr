@@ -23,8 +23,8 @@
 - `series/current`: 진행 중 시리즈 공유 문서. `active`, `sid`, `blue[]`, `red[]`, `roles`, `key`, `score{blue,red}`, `done`, `winner`, `ts`. 시리즈가 끝나면 `done:true`로 결과를 남기고(같은 팀으로 한 번 더 / 결과 닫기), 닫으면 `{active:false}`
 - 3판 2선 / 5판 3선: 시리즈 문서 `wins`(2|3, 없으면 `SERIES_WINS`=2, `winsOf`). 1세트 전에만 시리즈 라벨 버튼 `#btnBo`로 전환, 기기별 `localStorage` `mmr-bo`가 새 시리즈 기본값(`nextWins`), `같은 팀으로 한 번 더`는 이전 값 유지. 경기 문서에도 `wins` 기록(삭제로 시리즈 복원 시 사용). 한 번 짠 팀으로 한쪽이 `wins`승할 때까지 유지. MMR은 세트마다 갱신. 시리즈 중에는 다시 짜기 불가, `시리즈 종료`로 중단. 참가자는 `#subOut`/`#subIn`/`#btnSub`(`subPlayer`)로 한 명씩 교체: 점수 유지, 들어온 선수가 팀·포지션 승계, 참가자 선택도 맞춤. 시리즈 전적은 끝나는 세트의 선수만
 - 기록/취소는 `repo.recordGame`/`repo.undoGame`. Firebase는 transaction + `FieldValue.increment`로 처리하고 경기 id를 `{sid}-g{세트}`로 고정해 중복 기록을 막는다(충돌 시 code `stale`). 아티팩트 db/local은 순차 쓰기
-- 방장: `series.host`(선수 id). 시리즈를 만든 사람(팀 짜기·드래프트 시작·한 번 더). `updateSeries`(takeover 인자)·`recordGame`·현재 시리즈 경기 `trashGame`은 방장 아니면 code `host`로 거부. 방장 없는 예전 시리즈는 처음 수정한 사람이 방장. 시리즈 화면 위 `.hostbar`에 방장 이름, 남은 보기 전용(버튼 disabled), `방장 넘겨받기`(`#btnTakeHost`, 2단계)
-- 동시 사용 안전장치: `recordGame(s, winner, names, map, extra, bonus)`는 증감을 직접 계산(Firebase는 transaction 안에서 읽은 최신 선수 값으로)하고, 서버 시리즈가 화면의 `s`와 다르면(`sameSeries`: sid·점수·done·wins·팀·포지션) `stale`로 멈춘다. 시리즈 변경은 모두 `repo.updateSeries(s, mutate)`(같은 검사 후 수정), 팀 교환·교체·리플레이 팀 맞추기는 공용 `exchange(c, {id: 바꿀 id})`. 선수 점수 변경은 `repo.patchPlayer(id, fn)`(최신 값 기준, 지각·지각 취소), 펜타는 `repo.applyPenta`(경기·선수 한 transaction). 선수 편집 저장도 `patchPlayer`(입력한 MMR로 덮어쓰되 바뀌면 최신 값 기준으로 `mmrLog` 추가)
+- 방장: `series.host`(선수 id). 시리즈를 만든 사람(팀 짜기·드래프트 시작·한 번 더). `updateSeries`(takeover 인자)·`recordGame`·현재 시리즈 경기 `trashGame`은 방장 아니면 code `host`로 거부. 방장 없는 예전 시리즈는 처음 수정한 사람이 방장. 끝난 시리즈(`done`)는 방장이 아니어도 닫기·한 번 더·새로 짜기 가능. `recordGame`은 transaction 안의 최신 `host`로도 검사. 시리즈 화면 위 `.hostbar`에 방장 이름, 남은 보기 전용(버튼 disabled), `방장 넘겨받기`(`#btnTakeHost`, 2단계)
+- 동시 사용 안전장치: `recordGame(s, winner, names, map, extra, bonus)`는 증감을 직접 계산(Firebase는 transaction 안에서 읽은 최신 선수 값으로)하고, 서버 시리즈가 화면의 `s`와 다르면(`sameSeries`: sid·점수·done·wins·팀·포지션) `stale`로 멈춘다. 시리즈 변경은 모두 `repo.updateSeries(s, mutate)`(같은 검사 후 수정), 팀 교환·교체·리플레이 팀 맞추기는 공용 `exchange(c, {id: 바꿀 id})`. 선수 점수 변경은 `repo.patchPlayer(id, fn)`(최신 값 기준, 지각·지각 취소), 펜타는 `repo.applyPenta`(경기·선수 한 transaction). 선수 편집 저장도 `patchPlayer`(MMR 칸을 연 뒤 바꿨을 때만(`state.editMmr0`) MMR을 쓰고 최신 값 기준으로 `mmrLog` 추가. 안 바꿨으면 MMR은 건드리지 않아 편집 중 기록된 경기 점수를 덮어쓰지 않음)
 - 같은 팀/다른 팀 조건: 기기별 `localStorage` `mmr-cons` `{same:[[id..]], diff:[[a,b]]}`. 같은 팀 묶음 최대 5명(겹치면 합침), 다른 팀은 2명 쌍. `pickSplit`의 `fitsCons`로 조합을 거른 뒤 기존 규칙 적용. 만족하는 조합이 없으면 null
 - 삭제는 `repo.trashGame`: 아무 경기나 선택 가능. `deltas`·전적·시리즈 전적을 역으로 적용하고 경기를 `trash/{id}`(원본 + `deletedAt`)로 옮긴다. 가장 최근 경기일 때만 연승(`prevStreak`, `prevSetStreak`)과 진행 중 시리즈를 되돌린다(단, 다른 시리즈가 끝나지 않은 상태면 0:0이어도 그대로 둔다). 이전 경기는 그 경기 증감만 빼므로 이후 경기의 증감은 재계산하지 않는다
 - 휴지통: 기록 탭 아래. `repo.restoreGame`(증감·전적 재적용, 연승·시리즈는 그대로) / `repo.purgeTrash`(완전 삭제, 2단계 확인)
@@ -69,12 +69,12 @@
 - 순위: 한 세트도 안 뛴 선수(games 0)는 숨김(개수 표시). MMR 내림차순, 시리즈 전적, 세트 전적, 연속(시리즈 기준 2연승/2연패 이상), 시리즈 승률, 배치(10판 미만) 표시, 선호 포지션이 1개(주 포지션만)면 빨간 `비겁자` 딱지. 1위 줄은 전부 금색 + 빛이 지나가는 배경(`royal-sweep`), 이름 반짝임(`.royal`), 떠오르는 왕관(♛). reduced-motion이면 정지. 토큰 `--gold-shine`, `--gold-glint`
 - 기록: 최근 30경기, 선수별 증감(stats 챔피언이 있으면 이름 앞에 작은 초상화 `.mpic`, `champPic`), 경기별 삭제(2단계 확인, 휴지통으로), 휴지통(복원/완전 삭제)
 - 통계: 선수 카드는 순위와 같은 MMR 내림차순, 순위 1위는 황금 카드(`.royal-card`, 같은 반짝임). 탭을 열 때 `repo.allMatches()`로 전체 경기를 받아 `aggregateStats`(결과창 stats 있는 경기만)로 집계. 선수별 카드(판수·승률, 평균 K/D/A·KDA 비율, 평균 CS·골드·딜, 모스트 챔피언 3)와 많이 나온 챔피언 전부(둘 다 초상화 `mpicHtml`)
-- 선수: 개별 추가(선호 포지션 선택), 이름 일괄 추가(줄바꿈/쉼표), 편집 패널(이름, MMR, 선호 포지션, 롤 닉네임 `riotNames` 쉼표 구분), 목록에 닉네임 없음 표시, 삭제(2단계 확인)
+- 선수: 개별 추가(선호 포지션 선택), 이름 일괄 추가(줄바꿈/쉼표), 편집 패널(이름, MMR, 선호 포지션, 롤 닉네임 `riotNames` 쉼표 구분), 목록에 닉네임 없음 표시, 삭제(2단계 확인, 진행 중 시리즈에 있는 선수는 불가. 로그인한 선수가 삭제되면 자동 로그아웃)
 
 ## 알려진 한계
 - 라인별 MMR 없음 (선호 포지션만 반영, MMR은 하나)
 - 아티팩트 db/local 모드는 쓰기가 원자적이지 않음 (Firebase만 transaction)
-- 선수 동시 편집은 마지막 저장이 남음
+- 선수 동시 편집은 마지막 저장이 남음(MMR은 직접 바꿨을 때만 덮어씀)
 - 20명이 동시에 두 판을 돌리는 상황은 고려하지 않음 (한 판 최대 10명)
 - Firestore 규칙이 공개라 링크를 아는 누구나 데이터를 지우거나 바꿀 수 있음
 
