@@ -271,6 +271,29 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .help ol, .help ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.6; max-width: 68ch; }
 .help p { margin: 0; max-width: 68ch; line-height: 1.6; }
 .help .mono { font-family: ui-monospace, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.help-lead { color: var(--muted); }
+.help-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.help-step { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line-gold); background: var(--surface-2); min-width: 0; }
+.help-step div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.help-step span:not(.help-no) { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.help-no { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-num); font-weight: 700; color: var(--on-ink); background: var(--gold); }
+.help-sec { border: 1px solid var(--line); background: var(--surface); }
+.help-sec > summary { cursor: pointer; padding: 12px 14px; font-weight: 700; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.help-sec > summary::-webkit-details-marker { display: none; }
+.help-sec > summary .muted { margin-right: auto; font-weight: 400; font-size: 13px; }
+.help-sec > summary::after { content: '＋'; color: var(--gold); }
+.help-sec[open] > summary::after { content: '－'; }
+.help-sec[open] > summary { border-bottom: 1px solid var(--line); }
+.help-sec > :not(summary) { margin: 12px 14px; }
+.help-dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; line-height: 1.5; }
+.help-dl dt { font-weight: 700; color: var(--gold); white-space: nowrap; }
+.help-dl dd { margin: 0; min-width: 0; }
+.help-note { font-size: 13px; color: var(--muted); }
+@media (max-width: 520px) {
+  .help-steps { grid-template-columns: 1fr; }
+  .help-dl { grid-template-columns: 1fr; gap: 2px; }
+  .help-dl dd { margin-bottom: 8px; }
+}
 .small-link { font-size: 13px; color: var(--blue); }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .stat-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface-2); min-width: 0; font-size: 14px; }
@@ -438,74 +461,71 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
     <div class="panel help">
       <div class="row between"><h2>사용법</h2><a href="#teams" class="small-link">팀 짜기로 돌아가기</a></div>
 
-      <h3>1. 들어가기</h3>
-      <ul>
-        <li>사이트를 열면 <b>로그인</b> 화면에서 내 이름을 누릅니다. 탭을 닫으면 다시 물어봅니다.</li>
-        <li><b>게스트</b>는 보기만 되고 기록·수정은 안 됩니다.</li>
-        <li>오른쪽 위 내 이름을 누르면 <b>다른 이름으로 로그인</b> / <b>로그아웃</b>을 할 수 있습니다.</li>
-        <li>오른쪽 위가 <b>● 연결됨</b>이어야 모두와 같은 데이터를 봅니다.</li>
-      </ul>
+      <p class="help-lead">처음이면 <b>시작하기 3단계</b>만 보면 됩니다. 나머지는 필요할 때 눌러서 펼쳐 보세요.</p>
 
-      <h3>2. 처음 한 번: 내 정보 채우기</h3>
-      <p><b>선수</b> 탭에서 내 이름 옆 <b>편집</b>을 누릅니다.</p>
-      <ul>
-        <li><b>선호 포지션</b> 최대 2개(먼저 고른 쪽이 주 포지션). 주 포지션만 고르면 <b>비겁자</b> 딱지가 붙습니다.</li>
-        <li><b>기피 포지션</b> 1개(선택). 자동 팀 짜기가 웬만하면 그 자리에 넣지 않습니다.</li>
-        <li><b>롤 닉네임</b>: 리플레이·결과창에서 나를 자동으로 찾는 데 꼭 필요합니다. 여러 계정이면 쉼표로, #태그는 빼도 됩니다.</li>
-        <li><b>프로필 사진</b>: 챔피언 이름을 넣거나 <b>소환사 아이콘 검색</b>(T1, Gen.G 등)에서 고릅니다.</li>
-      </ul>
+      <div class="help-steps">
+        <div class="help-step"><span class="help-no">1</span><div><b>로그인</b><span>내 이름을 누릅니다</span></div></div>
+        <div class="help-step"><span class="help-no">2</span><div><b>내 정보</b><span>선수 탭 → 편집에서 포지션·롤 닉네임</span></div></div>
+        <div class="help-step"><span class="help-no">3</span><div><b>팀 짜기</b><span>참가자 고르고 자동 또는 드래프트</span></div></div>
+      </div>
 
-      <h3>3. 팀 짜기</h3>
-      <ol>
-        <li><b>참가자 고르기:</b> 이름을 누르거나(2~10명, 짝수), 카톡 모집 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣습니다. 못 찾은 이름은 누구인지 한 번 고르면 다음부터 자동입니다.</li>
-        <li><b>조건(선택):</b> <b>+ 같은 팀 묶기</b>(듀오), <b>+ 다른 팀 나누기</b>.</li>
-        <li><b>방식 고르기</b>
-          <ul>
-            <li><b>자동</b>: 평균 MMR, 같은 포지션끼리 실력 차이, 선호·기피 포지션, 최근 같은 팀 여부를 따져 고르게 짭니다.</li>
-            <li><b>토너먼트 드래프트</b>: 팀장 2명을 고른 뒤 블루부터 1·2·2·2·1명씩 번갈아 지명합니다. 차례마다 60초, 넘기면 무작위로 지명됩니다.</li>
-          </ul>
-        </li>
-        <li><b>고치기:</b> 같은 팀 선수 둘을 차례로 누르면 포지션 교환(언제나), 상대 팀 선수를 누르면 팀 교환(1세트 전에만). 마음에 안 들면 <b>다시 짜기</b>.</li>
-      </ol>
-      <p>팀을 시작한 사람이 <b>방장</b>입니다. 시리즈 동안 기록·교환·교체는 방장만 할 수 있고, 다른 사람 화면은 보기 전용입니다. 방장이 자리를 비우면 <b>방장 넘겨받기</b>를 두 번 누릅니다. 시리즈 화면 위에 <b>자동</b> / <b>드래프트</b>(팀을 바꾸면 <b>·수정</b>)로 어떻게 짠 팀인지 표시됩니다.</p>
+      <details class="help-sec" open>
+        <summary>내 정보 채우기 <span class="muted">처음 한 번</span></summary>
+        <p><b>선수</b> 탭 → 내 이름 옆 <b>편집</b></p>
+        <dl class="help-dl">
+          <dt>선호 포지션</dt><dd>최대 2개. 먼저 누른 쪽이 주 포지션</dd>
+          <dt>기피 포지션</dt><dd>정말 못 하는 자리 1개. 자동 팀 짜기가 피해 줌</dd>
+          <dt>롤 닉네임</dt><dd>리플레이로 기록할 때 꼭 필요. #태그는 빼도 됨</dd>
+          <dt>프로필 사진</dt><dd>챔피언 이름이나 소환사 아이콘(T1 등)</dd>
+        </dl>
+      </details>
 
-      <h3>4. 경기 기록</h3>
-      <p>시리즈는 기본 <b>3판 2선</b>이고, 1세트 전에 위쪽 <b>3판 2선 ⇄</b>를 누르면 <b>5판 3선</b>으로 바뀝니다.</p>
-      <ul>
-        <li><b>리플레이로 기록 (PC, 추천):</b> 게임이 끝나면 <b>리플레이로 기록</b>을 누르고 그날 리플레이를 한꺼번에 고릅니다. 세트 순서·승리 팀·MMR·통계가 자동으로 들어갑니다. 리플레이는 롤 클라이언트 → 프로필 → 대전 기록에서 받으면 <span class="mono">문서\League of Legends\Replays</span>에 저장됩니다. 파일 이름은 바꾸지 마세요.</li>
-        <li><b>버튼으로 (폰):</b> 세트가 끝날 때마다 <b>블루 승리</b> / <b>레드 승리</b>. 통계는 나중에 기록 탭에서 올릴 수 있습니다.</li>
-        <li><b>피어리스 밴:</b> 리플레이나 결과창을 올린 세트의 챔피언이 시리즈 화면에 포지션별로 표시됩니다.</li>
-        <li><b>중간에 사람이 바뀌면:</b> 아래 <b>선수 교체</b>. 점수는 그대로이고, 들어온 선수가 팀·포지션을 이어받습니다.</li>
-        <li><b>지각:</b> 아래에서 선수와 점수(−10/−20/−30)를 고르고 <b>지각</b>을 두 번 누릅니다. 취소는 선수 편집에서 합니다.</li>
-        <li>시리즈가 끝나면 <b>같은 팀으로 한 번 더</b> 또는 <b>결과 닫기</b>. 끝난 시리즈는 방장이 아니어도 누를 수 있습니다.</li>
-      </ul>
+      <details class="help-sec">
+        <summary>팀 짜기</summary>
+        <ol>
+          <li><b>참가자 고르기</b> — 이름을 누르거나, 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣기 (2~10명, 짝수)</li>
+          <li><b>방식 고르기</b>
+            <ul>
+              <li><b>자동</b> — 실력·포지션을 따져 알아서 고르게</li>
+              <li><b>토너먼트 드래프트</b> — 팀장 2명이 번갈아 지명 (차례당 60초)</li>
+            </ul>
+          </li>
+          <li><b>고치기</b> — 같은 팀 둘을 누르면 포지션 교환, 상대 팀을 누르면 팀 교환(1세트 전만)</li>
+        </ol>
+        <p class="help-note">팀을 시작한 사람이 <b>방장</b>. 기록·교체는 방장만 할 수 있고, 자리를 비우면 <b>방장 넘겨받기</b>.</p>
+      </details>
 
-      <h3>5. 점수 규칙</h3>
-      <ul>
-        <li><b>MMR:</b> 두 팀 평균으로 이길 확률을 계산해, 예상보다 잘하면 많이 오르고 못하면 많이 내려갑니다. 비등한 판은 ±16 정도입니다.</li>
-        <li><b>배치:</b> 처음 10판은 1.5배로 크게 움직입니다.</li>
-        <li><b>연승·연패 가속:</b> 세트 n연승 중 또 이기면 ×(1 + 0.1n), n연패 중 또 지면 같은 배율로 더 깎입니다(2연속부터).</li>
-        <li><b>용맹의 방패:</b> 선호 밖 포지션으로 가서 지면 감점 절반. 방장이 시리즈 화면에서 <b>ON/OFF</b>할 수 있습니다.</li>
-        <li><b>순위</b>의 전적·연속·승률은 시리즈 기준이고, 세트 전적은 따로 표시합니다.</li>
-      </ul>
+      <details class="help-sec">
+        <summary>경기 기록</summary>
+        <dl class="help-dl">
+          <dt>PC (추천)</dt><dd>게임 끝나고 <b>리플레이로 기록</b> → 그날 리플레이 전부 선택 → <b>기록하기</b>. 승패·점수·통계가 한 번에</dd>
+          <dt>폰</dt><dd>세트마다 <b>블루 승리</b> / <b>레드 승리</b></dd>
+          <dt>판수</dt><dd>기본 3판 2선. 1세트 전에 <b>3판 2선 ⇄</b>를 누르면 5판 3선</dd>
+          <dt>선수 교체</dt><dd>화면 아래 <b>선수 교체</b>. 점수는 그대로</dd>
+          <dt>지각</dt><dd>화면 아래에서 선수·점수 고르고 <b>지각</b> 두 번</dd>
+        </dl>
+        <p class="help-note">리플레이 위치: 롤 클라이언트 → 프로필 → 대전 기록에서 받기 → <span class="mono">문서\League of Legends\Replays</span> (파일 이름은 바꾸지 마세요)</p>
+      </details>
 
-      <h3>6. 통계와 기록</h3>
-      <ul>
-        <li><b>기록</b> 탭: 최근 30경기. 경기 카드에서 <b>리플레이 올리기</b>(PC) 또는 <b>결과창 올리기</b>(스크린샷, 폰 가능)로 통계를 붙입니다.</li>
-        <li><b>통계</b> 탭: 선수별 평균 KDA·CS·딜량, 모스트 챔피언, 많이 나온 챔피언.</li>
-      </ul>
+      <details class="help-sec">
+        <summary>점수 규칙</summary>
+        <dl class="help-dl">
+          <dt>기본</dt><dd>비슷한 팀끼리면 이기면 +16, 지면 −16 정도. 강팀을 이기면 더 많이</dd>
+          <dt>배치</dt><dd>처음 10판은 1.5배</dd>
+          <dt>연승·연패</dt><dd>2연속부터 점점 크게 움직임 (3연승 중 승리 ×1.3)</dd>
+          <dt>용맹의 방패</dt><dd>원치 않는 포지션에서 지면 감점 절반. 방장이 ON/OFF</dd>
+        </dl>
+      </details>
 
-      <h3>7. 실수했을 때</h3>
-      <ul>
-        <li>기록 탭에서 경기를 <b>삭제</b>하면 MMR·전적이 되돌아가고 <b>휴지통</b>으로 갑니다. 휴지통에서 <b>복원</b>할 수 있습니다.</li>
-        <li>이전 경기를 지우면 그 경기 점수만 빠지고, 연승 기록은 그대로입니다.</li>
-        <li><b>초기화</b>(두 번 눌러야 실행)는 참가자 선택과 짜인 팀만 지우고, 기록·MMR은 그대로입니다.</li>
-      </ul>
+      <details class="help-sec">
+        <summary>실수했을 때</summary>
+        <ul>
+          <li><b>기록</b> 탭에서 경기 <b>삭제</b> → 점수가 되돌아가고 휴지통으로. 휴지통에서 <b>복원</b> 가능</li>
+          <li><b>초기화</b>는 짜인 팀만 지움. 기록과 점수는 그대로</li>
+        </ul>
+      </details>
 
-      <h3>주의</h3>
-      <ul>
-        <li>링크를 아는 사람은 누구나 수정할 수 있으니 단톡방 밖으로 공유하지 마세요. 로그인은 편의 기능이지 보안이 아닙니다.</li>
-      </ul>
+      <p class="help-note">⚠ 링크를 아는 사람은 누구나 수정할 수 있습니다. 단톡방 밖으로 공유하지 마세요.</p>
     </div>
   </section>
 
