@@ -1108,7 +1108,7 @@ const repo = {
       if (c && c.sid === m.series && (isLatest || !c.done)) return { ...c, done: false, winner: null, score: { ...c.score, [m.winner]: Math.max(0, c.score[m.winner] - 1) } };
       if (!isLatest) return c;
       if (c && !c.done) return c; // 다른 시리즈가 진행 중이면(0:0으로 막 짠 팀 포함) 그대로
-      return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore, wins: m.wins || SERIES_WINS };
+      return { sid: m.series, blue: m.blue, red: m.red, roles: m.roles || {}, key: '', score: restore, wins: m.wins || SERIES_WINS, mode: m.mode || '', edited: !!m.edited };
     };
     const pids = Object.keys(m.deltas || {}).filter(pid => map[pid]);
     // 시리즈를 끝낸 세트에만 prevStreak가 있다
@@ -1614,6 +1614,7 @@ function renderDraft(map, ok) {
   const pool = left.filter(id => !pf || posOf(id).includes(pf) || !posOf(id).length)
     .sort(sort === 'name' ? (a, b) => map[a].name.localeCompare(map[b].name, 'ko') : (a, b) => map[b].mmr - map[a].mmr);
   el.hidden = false;
+  const typing = document.activeElement && document.activeElement.id === 'dSearch'; // 다시 그려도 검색 입력을 이어가게
   // 차례 타이머(DRAFT_SEC초, 0이 되면 tickDraft가 남은 선수 중 무작위 자동 지명): 지명 수가 바뀌면 새로 시작
   if (d.tKey !== used.size) { d.tKey = used.size; d.t0 = Date.now(); }
   el.innerHTML = `<div class="dbanner"><div class="dtitle">${left.length ? (capping ? `${ko[turn]} 팀장을 선택하세요!` : '선수를 선택하세요!') : '드래프트 완료!'}</div>
@@ -1627,12 +1628,14 @@ function renderDraft(map, ok) {
       <div class="dpool">${pool.map(id => `<button class="dtile" data-draft="${esc(id)}" data-nm="${esc(map[id].name)}"><span class="dav">${ini(id)}</span><span class="dname">${royalName(id, map[id].name)}</span><span class="num">${map[id].mmr}</span></button>`).join('') || `<span class="muted">${left.length ? '조건에 맞는 선수가 없습니다.' : '모두 지명됐습니다.'}</span>`}</div></div>
       ${side('red')}</div>
     <div class="dbtns"><button id="btnDraftBack"${used.size ? '' : ' disabled'}>되돌리기</button><button class="dready" id="btnDraftGo"${!left.length && !state.busy ? '' : ' disabled'}>준비 완료</button><button id="btnDraftCancel">종료</button></div>`;
+  if (typing) { const q = $('dSearch'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   filterDraft();
   tickDraft();
 }
 const DRAFT_SEC = 60;
 function tickDraft() {
   const d = state.draft, b = $('dBar'); if (!d || !b) return;
+  if ($('draft').offsetParent === null) { d.t0 = Math.min(Date.now(), d.t0 + 1000); return; } // 팀 짜기 탭이 안 보이면 멈춤(안 보이는 사이 자동 지명 방지)
   const sec = Math.max(0, DRAFT_SEC - Math.floor((Date.now() - d.t0) / 1000));
   document.querySelectorAll('#draft [data-dt]').forEach(x => { x.textContent = sec; }); b.style.width = `${sec / DRAFT_SEC * 100}%`;
   // 시간 초과: 남은 선수 중 무작위 한 명을 지금 차례(팀장 선정 포함)에 넣는다. 지명 수가 바뀌면 renderDraft가 타이머를 새로 시작
@@ -1900,7 +1903,7 @@ $('result').addEventListener('click', async e => {
   if (e.target.id === 'btnClose') { run(() => repo.updateSeries(repo.series, () => (null))); return; }
   if (e.target.id === 'btnAgain') {
     const s = repo.series;
-    run(() => repo.updateSeries(repo.series, () => ({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s), mode: s.mode || '', edited: !!s.edited })));
+    run(() => repo.updateSeries(repo.series, () => ({ blue: s.blue, red: s.red, roles: s.roles, key: s.key, sid: newId(), score: { blue: 0, red: 0 }, wins: winsOf(s), noShield: !!s.noShield, mode: s.mode || '', edited: !!s.edited })));
     return;
   }
   if (e.target.id === 'btnEndSeries') { if (await run(() => repo.updateSeries(repo.series, () => (null)))) toast('시리즈를 종료했습니다.'); return; }
@@ -2262,7 +2265,7 @@ tierOptions($('addTier')); tierOptions($('bulkTier'));
 const nameTaken = (name, exceptId) => repo.players.some(p => p.id !== exceptId && p.name.toLowerCase() === name.toLowerCase());
 const fresh = (name, mmr, pos = []) => ({ name, mmr, pos, games: 0, wins: 0, losses: 0, ts: Date.now() });
 
-function posText(p) { return ((p.pos || []).length ? p.pos.map(k => POS_LABEL[k]).join('/') : '포지션 미정') + (p.avoid ? ` · 기피 ${POS_LABEL[p.avoid]}` : ''); }
+function posText(p) { return ((p.pos || []).length ? p.pos.map(k => POS_LABEL[k]).join('/') : '포지션 미정') + (POS_LABEL[p.avoid] ? ` · 기피 ${POS_LABEL[p.avoid]}` : ''); }
 function getPos(el) { return el.dataset.v ? el.dataset.v.split(',') : []; }
 function setPos(el, v) {
   el.dataset.v = v.join(',');
