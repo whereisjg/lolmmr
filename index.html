@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
 </style>
 </head>
@@ -223,8 +224,8 @@ td.rank { font-family: var(--font-num); font-weight: 700; color: var(--muted); w
 tr.top1 td { background: transparent; font-weight: 700; }
 tr.top1 { background: linear-gradient(105deg, var(--gold-soft) 35%, var(--gold-shine) 50%, var(--gold-soft) 65%) 0 0 / 300% 100%; animation: royal-sweep 3.2s ease-in-out infinite; }
 @keyframes royal-sweep { 0% { background-position: 100% 0; } 60%, 100% { background-position: 0 0; } }
-.royal { background: linear-gradient(90deg, var(--gold) 0%, var(--gold) 40%, var(--gold-glint) 50%, var(--gold) 60%, var(--gold) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: royal-text 2.4s linear infinite; }
-@keyframes royal-text { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.royal { color: var(--gold) !important; font-weight: 700; animation: royal-text 2.4s ease-in-out infinite; }
+@keyframes royal-text { 0%, 100% { text-shadow: 0 0 0 transparent; } 50% { text-shadow: 0 0 6px var(--gold-shine), 0 0 1px var(--gold-glint); } }
 .crown { display: inline-block; animation: royal-crown 2.4s ease-in-out infinite; }
 @keyframes royal-crown { 0%, 100% { transform: translateY(0); text-shadow: 0 0 0 transparent; } 50% { transform: translateY(-2px); text-shadow: 0 0 8px var(--gold-glint); } }
 @media (prefers-reduced-motion: reduce) { tr.top1, .royal, .crown, .royal-card, .chip.royal-chip { animation: none; } tr.top1, .royal-card { background: var(--gold-soft); } }
