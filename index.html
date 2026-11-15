@@ -432,7 +432,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
         <summary class="muted">카톡 글 붙여넣어 선택</summary>
         <form id="pasteForm" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
           <textarea id="pasteText" placeholder="예: 21:30&#10;부연 기범 정표 나리 강래 원빈 현우 성훈 준수 민혁 10/10 완"></textarea>
-          <div class="row"><button type="submit" class="small">이 이름으로 선택</button></div>
+          <div class="row"><button type="submit" class="small">이 이름으로 선택</button><button type="button" class="small" id="btnRoster" hidden>카톡 명단 불러오기</button></div>
         </form>
         <div id="pasteMap"></div>
       </details>
@@ -484,7 +484,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
       <details class="help-sec">
         <summary>팀 짜기</summary>
         <ol>
-          <li><b>참가자 고르기</b> — 이름을 누르거나, 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣기 (2~10명, 짝수)</li>
+          <li><b>참가자 고르기</b> — 이름을 누르거나, 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣기, 또는 단톡방에서 봇에 <b>!참가</b>한 사람을 <b>카톡 명단 불러오기</b>로 한 번에 (2~10명, 짝수)</li>
           <li><b>방식 고르기</b>
             <ul>
               <li><b>자동</b> — 실력·포지션을 따져 알아서 고르게</li>
@@ -1166,6 +1166,12 @@ const repo = {
       await this.setMatch(id, doc);
     }
   },
+  // 카톡 봇 참가 명단(series/roster {day, ids}). Firebase에서만
+  async roster() {
+    if (this.kind !== 'firebase') return null;
+    const d = await this.db.doc('series/roster').get();
+    return d.exists ? d.data() : null;
+  },
   // 통계용 전체 경기 (기록 탭 구독은 최근 30경기만)
   async allMatches() {
     if (this.mode === 'db') return (await this.db.collection('matches').get()).docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1832,6 +1838,17 @@ $('pasteForm').addEventListener('submit', e => {
   $('pasteText').value = ''; renderTeams();
   toast(`${r.ids.length}명 선택${r.unknown.length ? ` · 선수 목록에 없음: ${r.unknown.join(', ')}` : ''}`);
 });
+// 카톡 봇 !참가 명단: 봇과 같은 날짜 기준(한국 시간 오전 6시에 바뀜). 먼저 참가한 10명
+const rosterDay = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+$('btnRoster').addEventListener('click', async () => {
+  if (inSeries()) { toast('시리즈 중에는 참가자를 바꿀 수 없습니다.'); return; }
+  let r;
+  try { r = await repo.roster(); } catch (e) { toast('카톡 명단을 불러오지 못했습니다.'); return; }
+  const map = pmap(), ids = r && r.day === rosterDay() ? (r.ids || []).filter(id => map[id]) : [];
+  if (!ids.length) { toast('오늘 카톡 !참가 명단이 비어 있습니다.'); return; }
+  state.selected = new Set(ids.slice(0, 10)); saveSel(); renderTeams();
+  toast(`카톡 명단 ${Math.min(ids.length, 10)}명 선택${ids.length > 10 ? ` · 대기 ${ids.length - 10}명 제외` : ''}`);
+});
 // 못 찾은 단어: 누구인지 고르면 그 선수의 AKA에 추가하고 선택에 넣는다
 function renderPasteMap() {
   const box = $('pasteMap'), words = state.pasteUnknown || [];
@@ -2432,6 +2449,7 @@ document.addEventListener('click', e => {
 window.addEventListener('scroll', closeTip, true);
 window.addEventListener('hashchange', closeTip);
 repo.onChange(renderAll);
+repo.onChange(() => { $('btnRoster').hidden = repo.kind !== 'firebase'; });
 let statsBooted = false;
 repo.onChange(() => { if (!statsBooted && repo.mode !== 'loading' && location.hash === '#stats') { statsBooted = true; loadStats(); } });
 route(); renderAll();

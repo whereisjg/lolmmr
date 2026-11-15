@@ -45,7 +45,8 @@
 - 리플레이 일괄 처리 공통: 같은 선택 안의 같은 경기 번호도 제외, 이름 바뀐 파일(번호 없음)은 맨 뒤(`byGameId`). 통계는 `recordGame(..., extra)`로 경기 문서에 함께 써서 gameId 누락을 막음. 저장 반영 대기(`waitFor`)가 8초를 넘으면 멈추고 알림. 시리즈가 바뀌면(sid·done) 열려 있던 미리보기는 버림. 통계 저장은 `statsPatch` + `learnRiotNames` 공용(빈 값은 기존 유지). 자동 연결 안 된 닉네임은 미리보기 `닉네임이 연결되지 않은 플레이어`에서 직접 선수를 고르면(`plan.extra`, `applyExtraMap`) 모든 파일에 적용되고 승패도 다시 판정
 
 ## 카톡 봇
-- `bot/messengerbot.js`: 메신저봇R(안드로이드 알림 자동응답, 레거시 `response(room, msg, sender, isGroupChat, replier)`, Rhino라 ES5) 스크립트. Firestore REST를 `org.jsoup.Jsoup`으로 읽기만 함(쓰기 없음). 명령 `!도움` `!순위` `!팀` `!전적 이름`(이름·AKA) `!사이트`. `ROOMS`로 반응할 방 제한. node 테스트용 `module.exports {handle, setFetch}`
+- `bot/messengerbot.js`: 메신저봇R(안드로이드 알림 자동응답, 레거시 `response(room, msg, sender, isGroupChat, replier)`, Rhino라 ES5) 스크립트. Firestore REST를 `org.jsoup.Jsoup`으로 읽고, 쓰기는 참가 명단 `series/roster`만(`:commit` + `appendMissingElements`/`removeAllFromArray`로 원자적). 명령 `!도움` `!순위` `!팀` `!전적 이름`(이름·AKA) `!사이트` `!참가`/`!불참`(인자 없으면 보낸 사람 카톡 이름, 있으면 그 이름들. 이름 찾기는 `parsePaste`와 같은 규칙, 보낸 사람은 카톡 이름 안에 든 가장 긴 이름도 인정) `!명단`(먼저 온 10명 + 대기, 10명 차면 알림, 불참 시 대기에서 올라온 사람 표시)
+- `series/roster`: `{day, ids[], ts}`. `day`는 한국 시간 오전 6시 기준 날짜(`rosterDay`, 봇과 사이트 같은 식). 날이 바뀐 뒤 첫 `!참가`가 비우고 시작. 사이트 팀 짜기 `카톡 명단 불러오기`(`#btnRoster`, Firebase일 때만 보임, `repo.roster()`)가 오늘 명단 앞 10명을 참가자로 선택(삭제된 선수 제외) `ROOMS`로 반응할 방 제한. node 테스트용 `module.exports {handle, setFetch}`
 
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600
