@@ -147,10 +147,12 @@ function finder(list) {
   };
 }
 function nameOf(map, id) { return map[id] ? map[id].name : '?'; }
-function rosterText(ids, map) {
-  if (!ids.length) return '[오늘 내전] 0/' + MAX + '\n!참가 로 신청하세요.';
+// r = openRoster() 결과 {ids, note}. 제목에 시간(note) 표시
+function rosterText(r, map) {
+  var ids = r.ids, title = '[오늘 내전' + (r.note ? ' ' + r.note : '') + '] ';
+  if (!ids.length) return title + '0/' + MAX + '\n!참가 로 신청하세요.';
   var main = ids.slice(0, MAX), wait = ids.slice(MAX);
-  return '[오늘 내전] ' + main.length + '/' + MAX + (main.length === MAX ? ' 모집 완료' : '') + '\n' +
+  return title + main.length + '/' + MAX + (main.length === MAX ? ' 모집 완료' : '') + '\n' +
     main.map(function (id, i) { return (i + 1) + '. ' + nameOf(map, id); }).join('\n') +
     (wait.length ? '\n\n대기: ' + wait.map(function (id) { return nameOf(map, id); }).join(', ') : '');
 }
@@ -165,7 +167,7 @@ function cmdJoin(args, sender, add) {
   if (!who.length) return "'" + miss.join(', ') + "' 선수를 찾지 못했습니다. 사이트 선수 탭 편집에서 AKA에 카톡 이름을 넣어 주세요.";
   var before = readRoster();
   changeRoster(who, add);
-  var after = readRoster(), head;
+  var ar = openRoster() || { ids: [], note: '' }, after = ar.ids, head;
   if (add) {
     var fresh = who.filter(function (id) { return before.indexOf(id) < 0; });
     head = fresh.length ? fresh.map(function (id) { return nameOf(map, id); }).join(', ') + ' 참가' : '이미 참가 중입니다.';
@@ -176,26 +178,36 @@ function cmdJoin(args, sender, add) {
     var up = after.slice(0, MAX).filter(function (id) { return before.slice(0, MAX).indexOf(id) < 0; });
     if (up.length) head += '\n대기에서 올라옴: ' + up.map(function (id) { return nameOf(map, id); }).join(', ');
   }
-  return head + (miss.length ? '\n(못 찾은 이름: ' + miss.join(', ') + ')' : '') + '\n\n' + rosterText(after, map);
+  return head + (miss.length ? '\n(못 찾은 이름: ' + miss.join(', ') + ')' : '') + '\n\n' + rosterText(ar, map);
 }
 function cmdRoster() {
   if (!openRoster()) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
   var map = {}; players().forEach(function (p) { map[p.id] = p; });
-  return rosterText(readRoster(), map);
+  return rosterText(openRoster(), map);
 }
 // !내전 [메모]: 오늘 내전 모집 시작. 이미 모집 중이면 명단만 보여 주고, !내전 새로 로 다시 시작
 function cmdStart(args, sender) {
   var list = players(), map = {}, cur = openRoster();
   list.forEach(function (p) { map[p.id] = p; });
   var fresh = args[0] === '새로', note = (fresh ? args.slice(1) : args).join(' ');
-  if (cur && cur.ids.length && !fresh) return '이미 모집 중입니다. 새로 모으려면 !내전 새로\n\n' + rosterText(cur.ids, map);
+  if (cur && cur.ids.length && !fresh) return '이미 모집 중입니다. 새로 모으려면 !내전 새로, 시간만 바꾸려면 !시간 22시30분\n\n' + rosterText(cur, map);
   var me = finder(list)(sender, true);
   startRoster(me ? [me.id] : [], note, sender);
   return '[내전 모집 시작]' + (note ? ' ' + note : '') + '\n!참가 / !불참 으로 신청하세요. 선착순 ' + MAX + '명, 넘으면 대기.' +
-    (me ? '\n' + me.name + ' 참가' : '') + '\n\n' + rosterText(readRoster(), map);
+    (me ? '\n' + me.name + ' 참가' : '') + '\n\n' + rosterText(openRoster() || { ids: [], note: note }, map);
+}
+// !시간 22시30분: 모집 중인 명단의 시간(note)만 바꿈. 명단은 그대로
+function cmdTime(text) {
+  var cur = openRoster();
+  if (!cur) return '모집 중인 내전이 없습니다. !내전 22시 처럼 시간과 함께 모집을 시작하세요.';
+  if (!text) return cur.note ? '오늘 내전 시간: ' + cur.note : '시간이 아직 없습니다. !시간 22시30분 처럼 정하세요.';
+  commit([{ update: { name: DOC, fields: { note: { stringValue: text } } }, updateMask: { fieldPaths: ['note'] },
+    updateTransforms: [{ fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }] }]);
+  var map = {}; players().forEach(function (p) { map[p.id] = p; });
+  return '내전 시간 변경: ' + (cur.note ? cur.note + ' → ' : '') + text + '\n\n' + rosterText(openRoster() || cur, map);
 }
 
-var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
+var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!시간 22시30분 : 시간만 변경 (명단 유지)\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
 
 function handle(msg, sender) {
   var m = msg.trim().split(/\s+/), c = m[0];
@@ -208,6 +220,7 @@ function handle(msg, sender) {
   if (c === '!불참') return cmdJoin(m.slice(1), sender || '', false);
   if (c === '!명단') return cmdRoster();
   if (c === '!내전') return cmdStart(m.slice(1), sender || '');
+  if (c.indexOf('!시간') === 0) return cmdTime(msg.trim().slice(3).trim()); // !시간22시30분 처럼 붙여 써도 됨
   return null;
 }
 
