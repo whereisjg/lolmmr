@@ -211,6 +211,7 @@ function handle(msg, sender) {
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
   if (msg.charAt(0) !== '!') return;
+  if (msg.trim() === '!방') { replier.reply('방 이름: ' + room); return; } // ROOMS 설정 확인용
   if (ROOMS.length && !ROOMS.some(function (r) { return String(room).indexOf(r) >= 0; })) return; // 방 이름에 포함되면 인정(이모지 등)
   try {
     var out = handle(msg, sender);
