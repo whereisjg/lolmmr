@@ -195,7 +195,7 @@ function cmdStart(args, sender) {
     (me ? '\n' + me.name + ' 참가' : '') + '\n\n' + rosterText(readRoster(), map);
 }
 
-var HELP = '[내전 봇]\n!내전 오늘 내전 모집 시작 (!내전 9시 반 처럼 메모 가능)\n!참가 / !불참 신청·취소 (!참가 이름 이름 으로 대신 신청)\n!명단 참가 명단\n!순위 MMR 순위\n!팀 진행 중 시리즈 팀·점수\n!전적 이름 개인 전적\n!사이트 사이트 주소';
+var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
 
 function handle(msg, sender) {
   var m = msg.trim().split(/\s+/), c = m[0];
