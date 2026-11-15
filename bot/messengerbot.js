@@ -222,7 +222,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
 // API2로 만든 봇에서도 동작하도록(레거시면 BotManager가 없어 건너뜀)
 if (typeof BotManager !== 'undefined') {
-  BotManager.getCurrentBot().addListener(Event.MESSAGE_CREATED, function (m) {
+  BotManager.getCurrentBot().addListener(Event.MESSAGE, function (m) {
     response(m.room, m.content, m.author.name, m.isGroupChat, { reply: function (t) { m.reply(t); } });
   });
 }
