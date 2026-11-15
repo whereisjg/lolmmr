@@ -209,8 +209,17 @@ function handle(msg, sender) {
   return null;
 }
 
+// 같은 메시지가 두 카톡 계정(내 계정 + 봇 계정)으로 동시에 들어오면 먼저 온 하나만 답한다
+var recent = {};
+function dup(k) {
+  var now = Date.now();
+  for (var x in recent) if (now - recent[x] > 5000) delete recent[x];
+  if (recent[k]) return true;
+  recent[k] = now; return false;
+}
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
   if (msg.charAt(0) !== '!') return;
+  if (dup(sender + '|' + msg)) return;
   if (msg.trim() === '!방') { replier.reply('방 이름: ' + room); return; } // ROOMS 설정 확인용
   if (ROOMS.length && !ROOMS.some(function (r) { return String(room).indexOf(r) >= 0; })) return; // 방 이름에 포함되면 인정(이모지 등)
   try {
