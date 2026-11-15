@@ -1,6 +1,6 @@
 // 내전 MMR 카톡 봇 (메신저봇R, 레거시 API). 조회 + 참가 명단(series/roster)만 쓴다. 승패·MMR은 건드리지 않음.
 // 설치: 메신저봇R 앱 → 봇 추가 → 이 파일 내용 붙여넣기 → 컴파일 → 켜기. 카톡 알림 접근 허용 필요.
-// ROOMS에 단톡방 이름을 넣으면 그 방에서만 반응(비우면 모든 방).
+// ROOMS에 단톡방 이름(일부만 써도 됨)을 넣으면 그 방에서만 반응(비우면 모든 방).
 
 var ROOMS = [];
 var SITE = 'https://whereisjg.github.io/lolmmr/';
@@ -211,7 +211,7 @@ function handle(msg, sender) {
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
   if (msg.charAt(0) !== '!') return;
-  if (ROOMS.length && ROOMS.indexOf(room) < 0) return;
+  if (ROOMS.length && !ROOMS.some(function (r) { return String(room).indexOf(r) >= 0; })) return; // 방 이름에 포함되면 인정(이모지 등)
   try {
     var out = handle(msg, sender);
     if (out) replier.reply(out);
