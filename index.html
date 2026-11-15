@@ -484,7 +484,7 @@ input, select, textarea { border-radius: 0; background: var(--bg); border-color:
       <details class="help-sec">
         <summary>팀 짜기</summary>
         <ol>
-          <li><b>참가자 고르기</b> — 이름을 누르거나, 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣기, 또는 단톡방에서 봇에 <b>!참가</b>한 사람을 <b>카톡 명단 불러오기</b>로 한 번에 (2~10명, 짝수)</li>
+          <li><b>참가자 고르기</b> — 이름을 누르거나, 카톡 글을 <b>카톡 글 붙여넣어 선택</b>에 붙여 넣기, 또는 단톡방에서 <b>!내전</b>으로 모아 <b>!참가</b>한 사람을 <b>카톡 명단 불러오기</b>로 한 번에 (2~10명, 짝수)</li>
           <li><b>방식 고르기</b>
             <ul>
               <li><b>자동</b> — 실력·포지션을 따져 알아서 고르게</li>
@@ -1838,14 +1838,14 @@ $('pasteForm').addEventListener('submit', e => {
   $('pasteText').value = ''; renderTeams();
   toast(`${r.ids.length}명 선택${r.unknown.length ? ` · 선수 목록에 없음: ${r.unknown.join(', ')}` : ''}`);
 });
-// 카톡 봇 !참가 명단: 봇과 같은 날짜 기준(한국 시간 오전 6시에 바뀜). 먼저 참가한 10명
+// 카톡 봇 !내전 명단: 봇과 같은 날짜 기준(한국 시간 오전 6시에 바뀜). 먼저 참가한 10명
 const rosterDay = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
 $('btnRoster').addEventListener('click', async () => {
   if (inSeries()) { toast('시리즈 중에는 참가자를 바꿀 수 없습니다.'); return; }
   let r;
   try { r = await repo.roster(); } catch (e) { toast('카톡 명단을 불러오지 못했습니다.'); return; }
-  const map = pmap(), ids = r && r.day === rosterDay() ? (r.ids || []).filter(id => map[id]) : [];
-  if (!ids.length) { toast('오늘 카톡 !참가 명단이 비어 있습니다.'); return; }
+  const map = pmap(), ids = r && r.open && r.day === rosterDay() ? (r.ids || []).filter(id => map[id]) : [];
+  if (!ids.length) { toast('오늘 카톡 !내전 명단이 비어 있습니다.'); return; }
   state.selected = new Set(ids.slice(0, 10)); saveSel(); renderTeams();
   toast(`카톡 명단 ${Math.min(ids.length, 10)}명 선택${ids.length > 10 ? ` · 대기 ${ids.length - 10}명 제외` : ''}`);
 });
