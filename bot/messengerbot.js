@@ -1,6 +1,7 @@
 // 내전 MMR 카톡 봇 (메신저봇R, 레거시 API). 조회 + 참가 명단(series/roster)만 쓴다. 승패·MMR은 건드리지 않음.
 // 설치: 메신저봇R 앱 → 봇 추가 → 이 파일 내용 붙여넣기 → 컴파일 → 켜기. 카톡 알림 접근 허용 필요.
 // ROOMS에 단톡방 이름(일부만 써도 됨)을 넣으면 그 방에서만 반응(비우면 모든 방).
+// 주의: 카톡 버전에 따라 메신저봇R이 단톡방 이름 대신 보낸 사람 이름을 room으로 받으면 ROOMS가 모든 메시지를 걸러 버림. 그때는 비워 둘 것.
 
 var ROOMS = [];
 var SITE = 'https://whereisjg.github.io/lolmmr/';
@@ -84,7 +85,7 @@ function cmdTeam() {
 function cmdPlayer(name) {
   if (!name) return '사용법: !전적 이름';
   var all = players(), r = ranked(all);
-  var p = all.filter(function (x) { return x.name === name || (x.aliases || []).indexOf(name) >= 0; })[0];
+  var p = finder(all)(name, true);
   if (!p) return "'" + name + "' 선수를 찾지 못했습니다.";
   var rank = r.indexOf(p) + 1, sw = p.sWins || 0, sl = p.sLosses || 0, s = streakText(p.streak || 0);
   var pos = (p.pos || []).map(function (k) { return POS[k]; }).join('/') || '상관없음';
@@ -157,8 +158,9 @@ function rosterText(ids, map) {
 function cmdJoin(args, sender, add) {
   var list = players(), map = {}, find = finder(list), who = [], miss = [];
   list.forEach(function (p) { map[p.id] = p; });
-  if (args.length) args.forEach(function (a) { var p = find(a, false); if (p) { if (who.indexOf(p.id) < 0) who.push(p.id); } else miss.push(a); });
-  else { var me = find(sender, true); if (me) who.push(me.id); else miss.push(sender); }
+  args.forEach(function (a) { var p = find(a, false); if (p) { if (who.indexOf(p.id) < 0) who.push(p.id); } else miss.push(a); });
+  // 이름이 하나도 안 맞으면 뒤의 말은 메모로 보고 보낸 사람 자신
+  if (!who.length) { miss = []; var me = find(sender, true); if (me) who.push(me.id); else miss.push(sender); }
   if (!openRoster()) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
   if (!who.length) return "'" + miss.join(', ') + "' 선수를 찾지 못했습니다. 사이트 선수 탭 편집에서 AKA에 카톡 이름을 넣어 주세요.";
   var before = readRoster();
@@ -210,17 +212,17 @@ function handle(msg, sender) {
 }
 
 // 같은 메시지가 두 카톡 계정(내 계정 + 봇 계정)으로 동시에 들어오면 먼저 온 하나만 답한다
-var recent = {};
+// 알림은 스레드 여러 개에서 동시에 올 수 있어 putIfAbsent(원자적)로 검사
+var recent = typeof java !== 'undefined' ? new java.util.concurrent.ConcurrentHashMap() : null;
 function dup(k) {
-  var now = Date.now();
-  for (var x in recent) if (now - recent[x] > 5000) delete recent[x];
-  if (recent[k]) return true;
-  recent[k] = now; return false;
+  if (!recent) return false; // node 테스트
+  var now = Date.now(), it = recent.entrySet().iterator();
+  while (it.hasNext()) if (now - it.next().getValue() > 5000) it.remove();
+  return recent.putIfAbsent(k, now) != null;
 }
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
   if (msg.charAt(0) !== '!') return;
   if (dup(sender + '|' + msg)) return;
-  if (msg.trim() === '!방') { replier.reply('방 이름: ' + room); return; } // ROOMS 설정 확인용
   if (ROOMS.length && !ROOMS.some(function (r) { return String(room).indexOf(r) >= 0; })) return; // 방 이름에 포함되면 인정(이모지 등)
   try {
     var out = handle(msg, sender);

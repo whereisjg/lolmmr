@@ -47,7 +47,8 @@
 ## 카톡 봇
 - `bot/messengerbot.js`: 메신저봇R(안드로이드 알림 자동응답, 레거시 `response(room, msg, sender, isGroupChat, replier)`, Rhino라 ES5) 스크립트. Firestore REST를 `org.jsoup.Jsoup`으로 읽고, 쓰기는 참가 명단 `series/roster`만(`:commit` + `appendMissingElements`/`removeAllFromArray`로 원자적). 명령 `!도움` `!순위` `!팀` `!전적 이름`(이름·AKA) `!사이트` `!내전 [메모]`(모집 시작: 명단을 새로 열고 보낸 사람은 바로 참가. 이미 모집 중이면 명단만 보여 주고 `!내전 새로`로 다시 시작) `!참가`/`!불참`(모집 중일 때만. 인자 없으면 보낸 사람 카톡 이름, 있으면 그 이름들. 이름 찾기는 `parsePaste`와 같은 규칙, 보낸 사람은 카톡 이름 안에 든 가장 긴 이름도 인정) `!명단`(먼저 온 10명 + 대기, 10명 차면 알림, 불참 시 대기에서 올라온 사람 표시)
 - `series/roster`: `{day, open, ids[], note, by, ts}`. 모집 중 = `open` + `day`가 오늘(한국 시간 오전 6시 기준 날짜 `rosterDay`, 봇과 사이트 같은 식). 날이 바뀌면 자동으로 모집 끝. 사이트 팀 짜기 `카톡 명단 불러오기`(`#btnRoster`, Firebase일 때만 보임, `repo.roster()`)가 오늘 명단 앞 10명을 참가자로 선택(삭제된 선수 제외)
-- `ROOMS`로 반응할 방 제한. node 테스트용 `module.exports {handle, setFetch, setCommit}`
+- 같은 메시지가 두 카톡 계정(내 계정 + 보안 폴더 봇 계정)으로 들어오면 `dup`(보낸 사람|메시지, 5초, `ConcurrentHashMap.putIfAbsent`)으로 한 번만 답함. 먼저 온 쪽 계정으로 답장
+- `ROOMS`로 반응할 방 제한(이름 일부 일치). 단, 현재 카톡/메신저봇R 조합은 단톡방 room이 보낸 사람 이름으로 와서 비워 둬야 함. node 테스트용 `module.exports {handle, setFetch, setCommit}`
 
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600
