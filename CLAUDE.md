@@ -46,7 +46,8 @@
 
 ## 카톡 봇
 - `bot/messengerbot.js`: 메신저봇R(안드로이드 알림 자동응답, 레거시 `response(room, msg, sender, isGroupChat, replier)`, Rhino라 ES5) 스크립트. Firestore REST를 `org.jsoup.Jsoup`으로 읽고, 쓰기는 참가 명단 `series/roster`만(`:commit` + `appendMissingElements`/`removeAllFromArray`로 원자적). 명령 `!도움` `!순위` `!팀` `!전적 이름`(이름·AKA) `!사이트` `!참가`/`!불참`(인자 없으면 보낸 사람 카톡 이름, 있으면 그 이름들. 이름 찾기는 `parsePaste`와 같은 규칙, 보낸 사람은 카톡 이름 안에 든 가장 긴 이름도 인정) `!명단`(먼저 온 10명 + 대기, 10명 차면 알림, 불참 시 대기에서 올라온 사람 표시)
-- `series/roster`: `{day, ids[], ts}`. `day`는 한국 시간 오전 6시 기준 날짜(`rosterDay`, 봇과 사이트 같은 식). 날이 바뀐 뒤 첫 `!참가`가 비우고 시작. 사이트 팀 짜기 `카톡 명단 불러오기`(`#btnRoster`, Firebase일 때만 보임, `repo.roster()`)가 오늘 명단 앞 10명을 참가자로 선택(삭제된 선수 제외) `ROOMS`로 반응할 방 제한. node 테스트용 `module.exports {handle, setFetch}`
+- `series/roster`: `{day, ids[], ts}`. `day`는 한국 시간 오전 6시 기준 날짜(`rosterDay`, 봇과 사이트 같은 식). 날이 바뀐 뒤 첫 `!참가`가 비우고 시작. 사이트 팀 짜기 `카톡 명단 불러오기`(`#btnRoster`, Firebase일 때만 보임, `repo.roster()`)가 오늘 명단 앞 10명을 참가자로 선택(삭제된 선수 제외)
+- `ROOMS`로 반응할 방 제한. node 테스트용 `module.exports {handle, setFetch, setCommit}`
 
 ## 알고리즘
 - 시작 MMR: 아이언 700, 브론즈 850, 실버 1000, 골드 1150, 플래티넘 1300, 에메랄드 1450, 다이아 이상 1600
