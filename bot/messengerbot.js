@@ -207,7 +207,33 @@ function cmdTime(text) {
   return '내전 시간 변경: ' + (cur.note ? cur.note + ' → ' : '') + text + '\n\n' + rosterText(openRoster() || cur, map);
 }
 
-var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!시간 22시30분 : 시간만 변경 (명단 유지)\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
+// !등록 이름 [티어] [포지션 최대 2개]: 사이트 선수 추가와 같은 모양(fresh). 티어 없으면 실버 1000
+var TIERS = [['아이언', 700, '아이언'], ['브론즈', 850, '브론즈'], ['실버', 1000, '실버'], ['골드', 1150, '골드'], ['플래', 1300, '플래티넘'], ['에메', 1450, '에메랄드'], ['다이아', 1600, '다이아']];
+var POS_KEY = { '탑': 'top', 'top': 'top', '정글': 'jungle', 'jg': 'jungle', 'jungle': 'jungle', '미드': 'mid', 'mid': 'mid',
+  '원딜': 'adc', '바텀': 'adc', '봇': 'adc', 'adc': 'adc', 'bot': 'adc', '서폿': 'support', '서포터': 'support', 'sup': 'support', 'support': 'support' };
+function newDocId() { var c = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', o = ''; for (var i = 0; i < 20; i++) o += c.charAt(Math.floor(Math.random() * c.length)); return o; }
+function cmdRegister(args) {
+  var name = (args[0] || '').slice(0, 20);
+  if (!name) return '사용법: !등록 이름 [티어] [포지션]\n예: !등록 현욱 골드 정글 미드 (티어 없으면 실버)';
+  if (!/^[0-9A-Za-z가-힣]+$/.test(name)) return '이름은 한글·영문·숫자로만 써 주세요.';
+  var list = players(), k = key(name);
+  var same = list.filter(function (p) { return key(p.name) === k || (p.aliases || []).some(function (a) { return key(a) === k; }); })[0];
+  if (same) return "'" + name + "'은(는) 이미 있습니다" + (same.name !== name ? ' (' + same.name + '의 AKA)' : '') + '.';
+  var tier = TIERS[2], pos = [], bad = [];
+  args.slice(1).forEach(function (a) {
+    var t = TIERS.filter(function (x) { return a.indexOf(x[0]) === 0; })[0], pk = POS_KEY[a.toLowerCase()];
+    if (t) tier = t; else if (pk) { if (pos.indexOf(pk) < 0 && pos.length < 2) pos.push(pk); } else bad.push(a);
+  });
+  if (bad.length) return "'" + bad.join(', ') + "'을(를) 모르겠습니다. 티어(아이언~다이아)나 포지션(탑 정글 미드 원딜 서폿)만 써 주세요.";
+  commit([{ update: { name: 'projects/lolmmr-25378/databases/(default)/documents/players/' + newDocId(), fields: {
+    name: { stringValue: name }, mmr: { integerValue: String(tier[1]) }, pos: strs(pos),
+    games: { integerValue: '0' }, wins: { integerValue: '0' }, losses: { integerValue: '0' }, ts: { integerValue: String(Date.now()) } } },
+    currentDocument: { exists: false } }]);
+  return name + ' 등록 완료 (' + tier[2] + ' ' + tier[1] + (pos.length ? ', ' + pos.map(function (x) { return POS[x]; }).join('/') : ', 포지션 상관없음') + ')\n' +
+    '이제 !참가 로 신청할 수 있습니다. 카톡 이름이 ' + name + '과 다르면 사이트 선수 편집에서 AKA에 카톡 이름을 넣어 주세요.';
+}
+
+var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!시간 22시30분 : 시간만 변경 (명단 유지)\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n!등록 현욱 골드 정글 : 새 선수 등록 (티어·포지션 생략 가능)\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
 
 function handle(msg, sender) {
   var m = msg.trim().split(/\s+/), c = m[0];
@@ -220,6 +246,7 @@ function handle(msg, sender) {
   if (c === '!불참') return cmdJoin(m.slice(1), sender || '', false);
   if (c === '!명단') return cmdRoster();
   if (c === '!내전') return cmdStart(m.slice(1), sender || '');
+  if (c === '!등록') return cmdRegister(m.slice(1));
   if (c.indexOf('!시간') === 0) return cmdTime(msg.trim().slice(3).trim()); // !시간22시30분 처럼 붙여 써도 됨
   return null;
 }
