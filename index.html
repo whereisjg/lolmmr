@@ -214,6 +214,7 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 
 /* 순위 */
 .table-wrap { overflow-x: auto; }
+td .rate { display: block; font-size: 12px; color: var(--muted); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 td { padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -1402,22 +1403,37 @@ function renderRanking() {
   const el = $('ranking');
   if (!repo.players.length) { el.innerHTML = '<h2>순위</h2><div class="empty">선수를 추가하면 MMR 순위가 여기에 표시됩니다.</div>'; return; }
   // 한 세트도 뛰지 않은 선수(0승 0패)는 순위에서 뺀다
-  const list = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => b.mmr - a.mmr || byName(a, b));
+  const sort = RANK_SORTS[lsGet('mmr-rank-sort')] ? lsGet('mmr-rank-sort') : 'mmr', king = kingId();
+  const list = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => RANK_SORTS[sort].f(a, b) || b.mmr - a.mmr || byName(a, b));
   const hidden = repo.players.length - list.length;
   if (!list.length) { el.innerHTML = '<h2>순위</h2><div class="empty">아직 경기를 뛴 선수가 없습니다. 첫 세트를 기록하면 순위가 표시됩니다.</div>'; return; }
   el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만${hidden ? ` · 기록 없는 ${hidden}명 숨김` : ''}</span></div>
+    <div class="row"><select id="rankSort" aria-label="순위 정렬">${Object.entries(RANK_SORTS).map(([k, o]) => `<option value="${k}"${k === sort ? ' selected' : ''}>${o.label}</option>`).join('')}</select></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="시리즈 결과">시리즈</th><th class="r">세트</th><th class="r" title="시리즈 기준">연속</th><th class="r" title="시리즈 승률">승률</th></tr></thead>
-      <tbody>${list.map((p, i) => `<tr class="${i === 0 ? 'top1' : ''}${p.id === state.me ? ' me' : ''}">
+      <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="시리즈 전적 · 승률">시리즈</th><th class="r" title="세트 전적 · 승률">세트</th><th class="r" title="시리즈 기준">연속</th></tr></thead>
+      <tbody>${list.map((p, i) => `<tr class="${p.id === king ? 'top1' : ''}${p.id === state.me ? ' me' : ''}">
         <td class="rank">${i + 1}</td>
-        <td>${i === 0 ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}${lateTag(p)}</td>
+        <td>${p.id === king ? `<span class="crown" aria-label="1위">♛</span><span class="royal">${esc(p.name)}</span>` : esc(p.name)}${p.games < PLACEMENT_GAMES ? `<span class="tag" data-tip="배치: ${PLACEMENT_GAMES}판 미만이라 점수가 1.5배로 크게 움직이는 중입니다.">배치</span>` : ''}${(p.pos || []).length === 1 ? '<span class="tag coward" data-tip="비겁자: 주 포지션만 고르고 부 포지션을 고르지 않았습니다. 선수 탭에서 부 포지션을 고르면 사라집니다.">비겁자</span>' : ''}${lateTag(p)}</td>
         <td class="r mmr">${p.mmr}</td>
-        <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패</td>
-        <td class="r num muted">${p.wins}-${p.losses}</td>
+        <td class="r num">${p.sWins || 0}승 ${p.sLosses || 0}패<span class="rate">${seriesRate(p)}</span></td>
+        <td class="r num">${p.wins || 0}-${p.losses || 0}<span class="rate">${setRate(p)}</span></td>
         <td class="r num">${streakText(p.streak)}</td>
-        <td class="r num">${seriesRate(p)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+}
+// 순위 정렬(기기별 localStorage mmr-rank-sort). 같으면 MMR → 이름. 승률은 같으면 판수 많은 쪽
+const rate = (w, l) => (w + l ? w / (w + l) : -1);
+const RANK_SORTS = {
+  mmr: { label: 'MMR 높은 순', f: () => 0 },
+  setWins: { label: '세트 승 많은 순', f: (a, b) => (b.wins || 0) - (a.wins || 0) },
+  setRate: { label: '세트 승률 높은 순', f: (a, b) => rate(b.wins || 0, b.losses || 0) - rate(a.wins || 0, a.losses || 0) || (b.games || 0) - (a.games || 0) },
+  sWins: { label: '시리즈 승 많은 순', f: (a, b) => (b.sWins || 0) - (a.sWins || 0) },
+  sRate: { label: '시리즈 승률 높은 순', f: (a, b) => rate(b.sWins || 0, b.sLosses || 0) - rate(a.sWins || 0, a.sLosses || 0) || ((b.sWins || 0) + (b.sLosses || 0)) - ((a.sWins || 0) + (a.sLosses || 0)) },
+};
+$('ranking').addEventListener('change', e => { if (e.target.id === 'rankSort') { lsSet('mmr-rank-sort', e.target.value); renderRanking(); } });
+function setRate(p) {
+  const n = (p.wins || 0) + (p.losses || 0);
+  return n ? Math.round((p.wins || 0) / n * 100) + '%' : '–';
 }
 
 function seriesRate(p) {
