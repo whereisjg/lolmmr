@@ -1403,7 +1403,7 @@ function renderRanking() {
   const el = $('ranking');
   if (!repo.players.length) { el.innerHTML = '<h2>순위</h2><div class="empty">선수를 추가하면 MMR 순위가 여기에 표시됩니다.</div>'; return; }
   // 한 세트도 뛰지 않은 선수(0승 0패)는 순위에서 뺀다
-  const sort = RANK_SORTS[lsGet('mmr-rank-sort')] ? lsGet('mmr-rank-sort') : 'mmr', king = kingId();
+  const sort = Object.prototype.hasOwnProperty.call(RANK_SORTS, lsGet('mmr-rank-sort')) ? lsGet('mmr-rank-sort') : 'mmr', king = kingId();
   const list = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => RANK_SORTS[sort].f(a, b) || b.mmr - a.mmr || byName(a, b));
   const hidden = repo.players.length - list.length;
   if (!list.length) { el.innerHTML = '<h2>순위</h2><div class="empty">아직 경기를 뛴 선수가 없습니다. 첫 세트를 기록하면 순위가 표시됩니다.</div>'; return; }

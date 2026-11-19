@@ -161,8 +161,15 @@ function cmdJoin(args, sender, add) {
   var list = players(), map = {}, find = finder(list), who = [], miss = [];
   list.forEach(function (p) { map[p.id] = p; });
   args.forEach(function (a) { var p = find(a, false); if (p) { if (who.indexOf(p.id) < 0) who.push(p.id); } else miss.push(a); });
-  // 이름이 하나도 안 맞으면 뒤의 말은 메모로 보고 보낸 사람 자신
-  if (!who.length) { miss = []; var me = find(sender, true); if (me) who.push(me.id); else miss.push(sender); }
+  var note = '';
+  // 이름이 하나도 안 맞으면: !참가는 뒤의 말을 메모로 보고 보낸 사람 자신(못 찾은 단어는 알려 줌), !불참은 남을 잘못 빼지 않게 그대로 실패
+  if (!who.length && (add || !args.length)) {
+    if (args.length) note = "\n('" + miss.join(' ') + "'은(는) 선수 이름이 아니라서 본인 신청으로 처리. 새 친구면 !등록 이름 먼저)";
+    miss = [];
+    var me = find(sender, true);
+    if (me) { who.push(me.id); if (!find(sender, false)) note += "\n(카톡 이름 '" + sender + "'을 " + me.name + '(으)로 인식. 틀리면 사이트 AKA에 카톡 이름을 넣어 주세요)'; }
+    else miss.push(sender);
+  }
   if (!openRoster()) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
   if (!who.length) return "'" + miss.join(', ') + "' 선수를 찾지 못했습니다. 사이트 선수 탭 편집에서 AKA에 카톡 이름을 넣어 주세요.";
   var before = readRoster();
@@ -178,7 +185,7 @@ function cmdJoin(args, sender, add) {
     var up = after.slice(0, MAX).filter(function (id) { return before.slice(0, MAX).indexOf(id) < 0; });
     if (up.length) head += '\n대기에서 올라옴: ' + up.map(function (id) { return nameOf(map, id); }).join(', ');
   }
-  return head + (miss.length ? '\n(못 찾은 이름: ' + miss.join(', ') + ')' : '') + '\n\n' + rosterText(ar, map);
+  return head + note + (miss.length ? '\n(못 찾은 이름: ' + miss.join(', ') + ')' : '') + '\n\n' + rosterText(ar, map);
 }
 function cmdRoster() {
   if (!openRoster()) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
