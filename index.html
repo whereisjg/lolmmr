@@ -1407,7 +1407,7 @@ function renderRanking() {
   const list = repo.players.filter(p => (p.games || 0) > 0).sort((a, b) => RANK_SORTS[sort].f(a, b) || b.mmr - a.mmr || byName(a, b));
   const hidden = repo.players.length - list.length;
   if (!list.length) { el.innerHTML = '<h2>순위</h2><div class="empty">아직 경기를 뛴 선수가 없습니다. 첫 세트를 기록하면 순위가 표시됩니다.</div>'; return; }
-  el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치: ${PLACEMENT_GAMES}판 미만${hidden ? ` · 기록 없는 ${hidden}명 숨김` : ''}</span></div>
+  el.innerHTML = `<div class="row between"><h2>순위</h2><span class="muted">배치 딱지 = ${PLACEMENT_GAMES}판 미만 (점수 1.5배)</span></div>
     <div class="row"><select id="rankSort" aria-label="순위 정렬">${Object.entries(RANK_SORTS).map(([k, o]) => `<option value="${k}"${k === sort ? ' selected' : ''}>${o.label}</option>`).join('')}</select></div>
     <div class="table-wrap"><table>
       <thead><tr><th>#</th><th>이름</th><th class="r">MMR</th><th class="r" title="시리즈 전적 · 승률">시리즈</th><th class="r" title="세트 전적 · 승률">세트</th><th class="r" title="시리즈 기준">연속</th></tr></thead>
@@ -1419,7 +1419,7 @@ function renderRanking() {
         <td class="r num">${p.wins || 0}-${p.losses || 0}<span class="rate">${setRate(p)}</span></td>
         <td class="r num">${streakText(p.streak)}</td>
       </tr>`).join('')}</tbody>
-    </table></div>`;
+    </table></div>${hidden ? `<p class="muted">아직 한 세트도 뛰지 않은 ${hidden}명은 표시하지 않습니다.</p>` : ''}`;
 }
 // 순위 정렬(기기별 localStorage mmr-rank-sort). 같으면 MMR → 이름. 승률은 같으면 판수 많은 쪽
 const rate = (w, l) => (w + l ? w / (w + l) : -1);
