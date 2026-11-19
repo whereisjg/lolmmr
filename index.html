@@ -161,6 +161,7 @@ textarea { width: 100%; resize: vertical; min-height: 84px; }
 .dlab { font-size: 12px; color: var(--d-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dslot.cur .dlab { color: var(--d-gold); font-weight: 700; }
 .dslotT { font-family: var(--font-num); font-size: 30px; font-weight: 700; color: var(--d-ink); }
 .dmmr { color: var(--d-muted); font-size: 12px; }
+.dexp { display: block; font-size: 11px; font-weight: 400; white-space: nowrap; }
 .dmid { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .dtools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .dposf { display: flex; gap: 4px; margin-right: auto; }
@@ -1328,6 +1329,11 @@ function renderTeams() {
   if (state.subOut && !s.blue.includes(state.subOut) && !s.red.includes(state.subOut)) state.subOut = null;
   if (state.subIn && (!map[state.subIn] || s.blue.includes(state.subIn) || s.red.includes(state.subIn))) state.subIn = null;
   if (!canSwap) state.swapId = null;
+  // 선수별 예상 증감: 실제 기록과 같은 computeDeltas(배치 K·연승/연패 가속·방패 반영)로 이길 때/질 때를 미리 계산
+  const shieldRoles = s.noShield ? {} : s.roles;
+  const ifWin = s.done ? null : { blue: computeDeltas(s.blue, s.red, 'blue', map, shieldRoles).deltas, red: computeDeltas(s.blue, s.red, 'red', map, shieldRoles).deltas };
+  const expOf = id => { if (!ifWin) return ''; const mine = s.blue.includes(id) ? 'blue' : 'red', other = mine === 'blue' ? 'red' : 'blue';
+    return `<span class="dexp num" title="이번 세트 예상 증감: 이기면 / 지면"><span class="up">${signed(ifWin[mine][id])}</span> / <span class="down">${signed(ifWin[other][id])}</span></span>`; };
   // 팀 슬롯: 드래프트(.dteam/.dslot)와 같은 픽창 모양. 누르면 교환(data-swap)
   const card = (side, ids, avg, e) => {
     const rank = id => POS_KEYS.indexOf(s.roles[id]);
@@ -1336,11 +1342,10 @@ function renderTeams() {
       const tag = canSwap ? ` data-swap="${esc(id)}" tabindex="0"` : '';
       const avd = !!p.avoid && p.avoid === r;
       const tags = `${avd && !s.done ? ' <span class="kda down" data-tip="기피 포지션: 이 선수가 피하고 싶다고 고른 자리에 배정됐습니다. 같은 팀 선수를 눌러 바꿀 수 있습니다.">기피</span>' : ''}${off && !s.done ? ' <span class="kda shield" data-tip="용맹의 방패: 선호 밖 포지션으로 배정돼 이번 세트에 지면 감점이 절반입니다.">방패</span>' : ''}${!s.done && Math.abs(p.setStreak || 0) >= 2 ? ` <span class="${p.setStreak > 0 ? 'up' : 'down'} kda" data-tip="${p.setStreak > 0 ? '연승가속' : '연패가속'}: 세트 ${Math.abs(p.setStreak)}${p.setStreak > 0 ? '연승 중. 이기면' : '연패 중. 지면'} 증감 ×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}배가 됩니다.">${p.setStreak > 0 ? '연승' : '연패'}×${streakMult(p.setStreak, p.setStreak > 0).toFixed(1)}</span>` : ''}`;
-      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}${id === state.me ? ' me' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b></span><span class="num dmmr">${p.mmr}</span></div>`;
+      return `<div class="dslot${canSwap ? ' swappable' : ''}${state.swapId === id ? ' cur' : ''}${id === state.me ? ' me' : ''}"${tag}><span class="dspells">${[0, 1].map(i => `<i>${pos[i] ? posIcon(pos[i]) : !pos.length && !i ? posIcon('fill') : ''}</i>`).join('')}</span><span class="dav">${face(p)}</span><span class="dwho"><span class="dlab${off ? ' off' : ''}">${posIcon(r)} ${POS_LABEL[r]}${tags}</span><b>${royalName(id, p.name)}</b>${expOf(id)}</span><span class="num dmmr">${p.mmr}</span></div>`;
     }).join('');
-    const win = Math.round(32 * (1 - e)), lose = Math.round(32 * (0 - e));
     return `<div class="dteam ${side}"><div class="dhead"><span>${side === 'blue' ? '블루' : '레드'}</span><span class="num">평균 ${Math.round(avg)}</span></div>${rows}
-      ${s.done ? '' : `<div class="dswing num" title="배치 10판 미만 선수는 1.5배">승 ${signed(win)} · 패 ${signed(lose)}</div>`}</div>`;
+      ${s.done ? '' : '<div class="dswing">이름 아래: 승 / 패 예상</div>'}</div>`;
   };
   res.hidden = false;
   const dis = state.busy || !canAct ? 'disabled' : '';
