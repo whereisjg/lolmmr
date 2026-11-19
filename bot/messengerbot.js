@@ -121,7 +121,7 @@ var POS_WORDS = '서포터|서폿|원딜|정글|미드|바텀|탑|봇|top|jungle
 var POS_HEAD = new RegExp('^(?:' + POS_WORDS + ')(.{2,})$'), POS_TAIL = new RegExp('^(.{2,}?)(?:' + POS_WORDS + ')$');
 function key(x) { return String(x).replace(/\s+/g, '').toLowerCase(); }
 function finder(list) {
-  var by = {};
+  var by = Object.create(null); // 'constructor' 같은 말이 Object 기본 속성으로 잡히지 않게
   list.forEach(function (p) { (p.aliases || []).forEach(function (a) { by[key(a)] = p; }); });
   list.forEach(function (p) { by[key(p.name)] = p; });
   var names = Object.keys(by).filter(function (n) { return n.length >= 2; });
@@ -228,7 +228,8 @@ function cmdRegister(args) {
   if (same) return "'" + name + "'은(는) 이미 있습니다" + (same.name !== name ? ' (' + same.name + '의 AKA)' : '') + '.';
   var tier = TIERS[2], pos = [], bad = [];
   args.slice(1).forEach(function (a) {
-    var t = TIERS.filter(function (x) { return a.indexOf(x[0]) === 0; })[0], pk = POS_KEY[a.toLowerCase()];
+    var lk = a.toLowerCase(), t = TIERS.filter(function (x) { return a.indexOf(x[0]) === 0; })[0];
+    var pk = Object.prototype.hasOwnProperty.call(POS_KEY, lk) ? POS_KEY[lk] : null;
     if (t) tier = t; else if (pk) { if (pos.indexOf(pk) < 0 && pos.length < 2) pos.push(pk); } else bad.push(a);
   });
   if (bad.length) return "'" + bad.join(', ') + "'을(를) 모르겠습니다. 티어(아이언~다이아)나 포지션(탑 정글 미드 원딜 서폿)만 써 주세요.";

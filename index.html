@@ -35,6 +35,7 @@
   --good: #0ac8b9;
   --bad: #e84057;
   --on-ink: #010a13;
+  --shadow: rgba(0, 0, 0, .25);
   --font-body: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-num: "Chakra Petch", "Noto Sans KR", ui-monospace, system-ui, sans-serif;
   --r: 4px;
@@ -243,7 +244,7 @@ tr.top1 .tag { background: var(--surface); border: 1px solid var(--gold); }
 .crown { color: var(--gold); margin-right: 4px; font-size: 17px; line-height: 1; vertical-align: -1px; }
 td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 [data-tip] { cursor: pointer; }
-.tip-pop { position: fixed; z-index: 30; max-width: min(280px, calc(100vw - 32px)); padding: 9px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0,0,0,.25); font-weight: 400; }
+.tip-pop { position: fixed; z-index: 30; max-width: min(280px, calc(100vw - 32px)); padding: 9px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px var(--shadow); font-weight: 400; }
 .tag.penta { margin: 0 2px 0 0; }
 .tag.coward { background: var(--red-soft); color: var(--red); }
 .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); margin-left: 6px; font-weight: 700; vertical-align: 1px; }
@@ -325,7 +326,7 @@ td.mmr { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
 .role { display: inline-block; min-width: 2.6em; font-size: 12px; color: var(--muted); font-weight: 700; }
 .role.off { color: var(--gold); }
 .empty { text-align: center; padding: 28px 12px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--on-ink); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgba(0,0,0,.2); z-index: 20; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--on-ink); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); box-shadow: 0 6px 24px var(--shadow); z-index: 20; }
 @media (max-width: 380px) {
   .match .cols { grid-template-columns: 1fr; }
   .tabs a { font-size: 12px; padding: 8px 2px; }
@@ -1143,7 +1144,9 @@ const repo = {
         const p = map[pid], d = m.deltas[pid];
         await this.updatePlayer(pid, { mmr: p.mmr - d, games: Math.max(0, p.games - 1), wins: Math.max(0, p.wins - (won(pid) ? 1 : 0)), losses: Math.max(0, p.losses - (won(pid) ? 0 : 1)), ...streakOf(pid), ...(ended(pid) ? { sWins: Math.max(0, (p.sWins || 0) - (won(pid) ? 1 : 0)), sLosses: Math.max(0, (p.sLosses || 0) - (won(pid) ? 0 : 1)) } : {}), ts });
       }
-      this.local.trash = { ...(this.local.trash || {}), [m.id]: trashed };
+      // 아티팩트 db 모드에는 this.local이 없다: 휴지통도 db에 쓴다
+      if (this.mode === 'local') this.local.trash = { ...(this.local.trash || {}), [m.id]: trashed };
+      else await this.db.doc('trash/' + m.id).set(trashed);
       await this.deleteMatch(m.id);
       await this.setSeries(nextFor(this.series));
     }
@@ -1171,8 +1174,9 @@ const repo = {
         const p = map[pid];
         await this.updatePlayer(pid, { mmr: p.mmr + x.deltas[pid], games: p.games + 1, wins: p.wins + (won(pid) ? 1 : 0), losses: p.losses + (won(pid) ? 0 : 1), ...(ended(pid) ? { sWins: (p.sWins || 0) + (won(pid) ? 1 : 0), sLosses: (p.sLosses || 0) + (won(pid) ? 0 : 1) } : {}), ts });
       }
-      delete this.local.trash[id];
-      await this.setMatch(this.local.matches[id] ? id + '-r' + ts.toString(36) : id, doc);
+      const local = this.mode === 'local', taken = local ? !!this.local.matches[id] : this.matches.some(y => y.id === id);
+      if (local) delete this.local.trash[id]; else await this.db.doc('trash/' + id).delete();
+      await this.setMatch(taken ? id + '-r' + ts.toString(36) : id, doc);
     }
   },
   // 카톡 봇 참가 명단(series/roster {day, ids}). Firebase에서만
@@ -1242,8 +1246,9 @@ for (const k of ['addPlayer', 'updatePlayer', 'deletePlayer', 'setMatch', 'updat
 }
 async function run(fn) {
   if (state.busy) return false;
-  state.busy = true; renderAll();
-  try { await fn(); return true; } catch (e) { toast(errMsg(e)); return false; }
+  state.busy = true;
+  // 그리기 오류가 나도 finally에서 busy를 풀도록 try 안에서 그린다(버튼이 계속 잠기는 것 방지)
+  try { renderAll(); await fn(); return true; } catch (e) { toast(errMsg(e)); return false; }
   finally { state.busy = false; renderAll(); }
 }
 
@@ -1294,7 +1299,7 @@ function renderTeams() {
   const map = pmap();
   // 삭제된 선수는 선택에서 뺀다. 선수 목록을 받기 전(첫 화면)에는 지우지 않는다(저장된 선택이 새로고침마다 사라지던 문제)
   if (repo.players.length) for (const id of [...state.selected]) if (!map[id]) state.selected.delete(id);
-  const n = state.selected.size;
+  const n = [...state.selected].filter(id => map[id]).length; // 목록을 받기 전에는 0(아직 모르는 id로 팀 짜기 방지)
   const chips = $('chips');
   if (!repo.players.length) {
     chips.innerHTML = repo.mode === 'loading' ? '<span class="muted">선수 목록을 불러오는 중입니다.</span>'
@@ -1509,6 +1514,8 @@ function renderHistory() {
     return `<li><span class="nm">${r ? `<span class="role">${posIcon(r)}</span>` : ''}${pic ? `<span class="mpic" title="${esc(st.champion)}">${pic}</span>` : ''}${royalName(id, (m.names || {})[id] || '삭제된 선수')}${st ? ` <span class="kda">${esc(st.champion || '')} ${kda(st)}</span>` : ''}</span><span class="num ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${(m.pentaBonus || {})[id] ? `<span class="tag penta" data-tip="펜타킬 보너스: 펜타킬 1번당 +${PENTA_BONUS}점이 이 증감에 포함되어 있습니다.">펜타</span> ` : ''}${signed(d)}</span></li>`;
   }).join('')}</ul>`;
   const dis = state.busy ? 'disabled' : '';
+  // 파일 선택 창에서 취소하면 state.upload에 {mid}만 남는다: 읽는 중·오류·결과가 있을 때만 패널을 연다
+  const upOpen = m => { const u = state.upload; return !!(u && u.mid === m.id && (u.loading || u.err || u.parsed)); };
   const delCtl = m => state.confirmDel === m.id
     ? `<div class="confirm"><span>이 경기를 휴지통으로 옮기고 MMR·전적을 되돌릴까요?${m.id === repo.matches[0].id ? '' : ' 이전 경기라 연승 기록은 그대로 둡니다.'}</span><button class="danger small" data-del-yes="${esc(m.id)}" ${dis}>삭제</button><button class="small" data-del-no>취소</button></div>`
     : `<button class="small danger" data-del="${esc(m.id)}" ${dis}>삭제</button>`;
@@ -1517,8 +1524,8 @@ function renderHistory() {
       <div class="match-head"><span class="num">${fmtTime(m.ts)}${m.game ? ` · ${m.game}세트` : ''}${m.mode ? ` <span class="muted">· ${m.mode === 'auto' ? '자동' : '드래프트'}${m.edited ? '·수정' : ''}</span>` : ''}${m.by ? ` <span class="muted">· 기록 ${esc(m.by)}</span>` : ''}</span>
         <span><span class="${m.winner === 'blue' ? 'win-b' : 'win-r'}">${m.winner === 'blue' ? '블루 승' : '레드 승'}</span> · 예상 블루 <span class="num">${m.pBlue}%</span></span></div>
       <div class="cols">${side(m, m.blue, 'b', 'BLUE')}${side(m, m.red, 'r', 'RED')}</div>
-      ${state.upload && state.upload.mid === m.id ? uploadPanel(m) : ''}
-      <div class="row">${delCtl(m)}${!(state.upload && state.upload.mid === m.id) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 추가 (딜량 탭 등)' : '결과창 올리기'}</button>` : ''}${!(state.upload && state.upload.mid === m.id) ? `<button class="small" data-replay="${esc(m.id)}" ${state.busy ? 'disabled' : ''} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일">리플레이 올리기</button>` : ''}${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}</div>
+      ${upOpen(m) ? uploadPanel(m) : ''}
+      <div class="row">${delCtl(m)}${!upOpen(m) && VISION_URL ? `<button class="small" data-shot="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>${m.stats ? '결과창 추가 (딜량 탭 등)' : '결과창 올리기'}</button>` : ''}${!upOpen(m) ? `<button class="small" data-replay="${esc(m.id)}" ${state.busy ? 'disabled' : ''} title="PC의 문서\\League of Legends\\Replays 폴더의 .rofl 파일">리플레이 올리기</button>` : ''}${m.statsMeta && m.statsMeta.duration ? ` <span class="muted">게임 시간 ${esc(m.statsMeta.duration)}</span>` : ''}</div>
     </div>`).join('')}${trashHtml()}`;
 }
 
@@ -2005,10 +2012,11 @@ function fillChampList() {
   const dl = $('champList'); if (!dl || !DD) return;
   dl.innerHTML = Object.entries(DD.champ).sort((a, b) => a[1].localeCompare(b[1], 'ko')).map(([, n]) => `<option value="${esc(n)}">`).join('');
 }
-function champId(v) {
+// cur: 지금 저장된 icon. 챔피언 목록(DD)을 아직 못 받았어도 그대로 두면 통과(사진 있는 선수 편집이 막히지 않게)
+function champId(v, cur) {
   v = (v || '').trim(); if (!v) return '';
   const pi = /^아이콘 (\d+)$/.exec(v); if (pi) return 'pi:' + pi[1];
-  if (!DD) return null;
+  if (!DD) return cur && v === cur ? cur : null;
   const e = Object.entries(DD.champ).find(([id, n]) => n === v || id.toLowerCase() === v.toLowerCase());
   return e ? e[0] : null;
 }
@@ -2040,6 +2048,7 @@ function replayPlanHtml(s) {
   if (plan.sid !== s.sid || plan.done !== !!s.done) { state.replayPlan = null; return ''; }
   if (plan.loading) return '<div class="shot">리플레이를 읽는 중입니다.</div>';
   if (plan.err) return `<div class="shot"><span class="down">${esc(plan.err)}</span><div class="row"><button class="small" id="btnReplayCancel">닫기</button></div></div>`;
+  applyExtraMap(plan, s); // 미리보기를 연 뒤 팀이 바뀌었을 수 있으니(선수 교환 등) 지금 팀으로 다시 판정
   const attach = plan.mode === 'attach', played = attach ? 0 : s.score.blue + s.score.red;
   const tgt = it => attach && plan.games.find(g => g.id === it.targetId);
   const pickSet = (it, k) => `<select data-target="${k}" aria-label="붙일 세트"><option value="">붙이지 않음</option>${plan.games.map(g => `<option value="${esc(g.id)}" ${g.id === it.targetId ? 'selected' : ''}>${g.game}세트 (${g.winner === 'blue' ? '블루' : '레드'} 승)</option>`).join('')}</select>`;
@@ -2412,7 +2421,7 @@ $('btnEditSave').addEventListener('click', async () => {
   if (!name) { toast('이름을 입력하세요.'); return; }
   if (nameTaken(name, id)) { toast(`'${name}'은(는) 이미 있습니다.`); return; }
   if (!Number.isInteger(mmr) || mmr < 0 || mmr > 4000) { toast('MMR은 0~4000 사이 정수로 입력하세요.'); return; }
-  const icon = champId($('editIcon').value);
+  const icon = champId($('editIcon').value, (pmap()[id] || {}).icon);
   if (icon === null) { toast('챔피언 이름을 목록에서 골라 주세요.'); return; }
   // MMR 칸을 안 바꿨으면 MMR은 건드리지 않는다(편집 창을 연 사이 기록된 경기 점수를 덮어쓰지 않게)
   const mmrEdited = mmr !== state.editMmr0;
