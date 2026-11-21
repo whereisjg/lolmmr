@@ -209,7 +209,11 @@ function cmdRoster() {
   return rosterText(r, map);
 }
 // !독려: 남은 자리·시간·지금 참가자 + 최근 30일 안에 뛴(또는 등록한, players.ts) 사람 중 아직 신청 안 한 사람(오늘 !불참한 사람 제외)
-var CHEERS = ['오늘 협곡에서 만나요!', '빠지면 섭섭합니다.', '같이 MMR 올리러 가요.', '한 판만 하고 자면 됩니다.'];
+// 내전 명언: 자리가 남았을 때 하나를 무작위로 붙인다
+var CHEERS = ['안 오면 지상렬', '잠은 죽어서도 잘 수 있지만 내전은 못 한다', '오늘 빠지면 내일 단톡에서 내가 빠진다', '협곡은 기다려 주지 않는다',
+  '내일 출근은 내일의 내가 한다', 'MMR은 참가한 자에게만 오른다', '숙제는 내일, 내전은 오늘', '한 판만 하자는 말은 아직 한 번도 지켜진 적 없다',
+  '안 오는 자, 순위표에서 잊히리라', '피곤은 핑계, 내전은 운명', '술은 다음에도 마실 수 있지만 오늘 내전은 오늘뿐', '롤드컵은 못 가도 내전은 간다',
+  '지는 건 괜찮다. 안 오는 게 문제다', '인생은 짧고 내전은 길다', '헬스는 내일도 열린다', '오늘의 불참은 평생의 놀림거리'];
 function cmdCheer() {
   var r = openRoster();
   if (!r) return '모집 중인 내전이 없습니다. !내전 21시 처럼 먼저 모집을 시작하세요.';
@@ -221,7 +225,8 @@ function cmdCheer() {
   var rest = list.filter(function (p) { return ids.indexOf(p.id) < 0 && r.out.indexOf(p.id) < 0 && (p.ts || 0) >= since; })
     .sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
   return '📣 ' + title + (!n ? '아직 0명입니다!' : (left === 1 ? '딱 1자리' : left + '자리') + ' 남았습니다! (' + n + '/' + MAX + ')') + '\n' +
-    (!n ? '첫 참가자가 되어 주세요.' : left === 1 ? '막차 타실 분?' : CHEERS[Math.floor(Math.random() * CHEERS.length)]) + ' !참가 로 신청하세요.' +
+    (!n ? '첫 참가자가 되어 주세요. ' : left === 1 ? '막차 타실 분? ' : '') + '!참가 로 신청하세요.\n' +
+    '"' + CHEERS[Math.floor(Math.random() * CHEERS.length)] + '"' +
     (n ? '\n\n참가: ' + ids.slice(0, MAX).map(function (id) { return map[id].name; }).join(', ') : '') +
     (rest.length ? '\n' + (n ? '' : '\n') + '오늘 되시나요? ' + rest.map(function (p) { return p.name; }).join(', ') : '');
 }
