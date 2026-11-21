@@ -96,13 +96,13 @@ function cmdPlayer(name) {
     '포지션 ' + pos + (p.avoid ? ' · 기피 ' + POS[p.avoid] : '');
 }
 
-// ---------- 참가 명단: series/roster {day, ids[], ts}. 날짜는 한국 시간 오전 6시에 바뀜(새벽 게임 포함)
+// ---------- 참가 명단: series/roster {day, ids[], out[], ts}. 날짜는 한국 시간 오전 6시에 바뀜(새벽 게임 포함). out = 오늘 !불참한 사람
 var ROSTER = 'series/roster', MAX = 10;
 var DOC = 'projects/lolmmr-25378/databases/(default)/documents/' + ROSTER;
 function rosterDay() { return new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10); }
 function rawRoster() { try { return obj(fetchJson(ROSTER).fields || {}); } catch (e) { return {}; } }
 // 모집 중 = !내전으로 연 명단이 오늘 것(open, day). 아니면 null
-function openRoster() { var r = rawRoster(); return r.open && r.day === rosterDay() ? { ids: r.ids || [], note: r.note || '' } : null; }
+function openRoster() { var r = rawRoster(); return r.open && r.day === rosterDay() ? { ids: r.ids || [], note: r.note || '', out: r.out || [] } : null; }
 function readRoster() { var r = openRoster(); return r ? r.ids : []; }
 function strs(a) { return { arrayValue: a.length ? { values: a.map(function (x) { return { stringValue: x }; }) } : {} }; }
 // !내전: 명단을 새로 연다(보낸 사람은 바로 참가)
@@ -111,9 +111,10 @@ function startRoster(ids, note, by) {
     updateTransforms: [{ fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }] }]);
 }
 function changeRoster(ids, add) {
-  var t = { fieldPath: 'ids' };
-  t[add ? 'appendMissingElements' : 'removeAllFromArray'] = strs(ids).arrayValue;
-  commit([{ transform: { document: DOC, fieldTransforms: [t, { fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }] } }]);
+  var t = { fieldPath: 'ids' }, o = { fieldPath: 'out' }, v = strs(ids).arrayValue;
+  t[add ? 'appendMissingElements' : 'removeAllFromArray'] = v;
+  o[add ? 'removeAllFromArray' : 'appendMissingElements'] = v; // !불참한 사람은 !독려 목록에서 뺀다
+  commit([{ transform: { document: DOC, fieldTransforms: [t, o, { fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }] } }]);
 }
 
 // 이름 찾기(사이트 카톡 붙여넣기와 같은 규칙): 이름·AKA 일치 → 앞뒤 포지션 단어 떼기 → 성+이름 → (보낸 사람만) 카톡 이름 안에 든 가장 긴 이름
@@ -192,6 +193,23 @@ function cmdRoster() {
   var map = {}; players().forEach(function (p) { map[p.id] = p; });
   return rosterText(openRoster(), map);
 }
+// !독려: 남은 자리·시간·지금 참가자 + 최근 30일 안에 뛴(또는 등록한, players.ts) 사람 중 아직 신청 안 한 사람(오늘 !불참한 사람 제외)
+var CHEERS = ['오늘 협곡에서 만나요!', '빠지면 섭섭합니다.', '같이 MMR 올리러 가요.', '한 판만 하고 자면 됩니다.'];
+function cmdCheer() {
+  var r = openRoster();
+  if (!r) return '모집 중인 내전이 없습니다. !내전 21시 처럼 먼저 모집을 시작하세요.';
+  var list = players(), map = {}; list.forEach(function (p) { map[p.id] = p; });
+  var ids = r.ids.filter(function (id) { return map[id]; }), n = Math.min(ids.length, MAX), left = MAX - n;
+  var title = '[오늘 내전' + (r.note ? ' ' + r.note : '') + '] ';
+  if (!left) return title + MAX + '명 모집 완료!' + (ids.length > MAX ? ' 대기 ' + (ids.length - MAX) + '명.' : '') + '\n못 오게 되면 !불참 으로 자리를 비워 주세요.';
+  var since = Date.now() - 30 * 864e5;
+  var rest = list.filter(function (p) { return ids.indexOf(p.id) < 0 && r.out.indexOf(p.id) < 0 && (p.ts || 0) >= since; })
+    .sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+  return '📣 ' + title + (!n ? '아직 0명입니다!' : (left === 1 ? '딱 1자리' : left + '자리') + ' 남았습니다! (' + n + '/' + MAX + ')') + '\n' +
+    (!n ? '첫 참가자가 되어 주세요.' : left === 1 ? '막차 타실 분?' : CHEERS[Math.floor(Math.random() * CHEERS.length)]) + ' !참가 로 신청하세요.' +
+    (n ? '\n\n참가: ' + ids.slice(0, MAX).map(function (id) { return map[id].name; }).join(', ') : '') +
+    (rest.length ? '\n' + (n ? '' : '\n') + '오늘 되시나요? ' + rest.map(function (p) { return p.name; }).join(', ') : '');
+}
 // !내전 [메모]: 오늘 내전 모집 시작. 이미 모집 중이면 명단만 보여 주고, !내전 새로 로 다시 시작
 function cmdStart(args, sender) {
   var list = players(), map = {}, cur = openRoster();
@@ -241,7 +259,7 @@ function cmdRegister(args) {
     '이제 !참가 로 신청할 수 있습니다. 카톡 이름이 ' + name + '과 다르면 사이트 선수 편집에서 AKA에 카톡 이름을 넣어 주세요.';
 }
 
-var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!시간 22시30분 : 시간만 변경 (명단 유지)\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n!등록 현욱 골드 정글 : 새 선수 등록 (티어·포지션 생략 가능)\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
+var HELP = '[내전봇 사용법]\n\n■ 내전 모집 (선착순 10명)\n!내전 21시 : 모집 시작 (시간 메모 가능)\n!내전 새로 : 명단 비우고 다시 시작\n!시간 22시30분 : 시간만 변경 (명단 유지)\n!참가 / !불참 : 신청·취소\n!참가 강래 원빈 : 대신 신청\n!명단 : 지금 명단\n!독려 : 남은 자리·아직 신청 안 한 사람 알림\n!등록 현욱 골드 정글 : 새 선수 등록 (티어·포지션 생략 가능)\n\n■ 조회\n!순위 : MMR 순위\n!팀 : 진행 중 팀·점수\n!전적 이름 : 개인 전적\n!사이트 : 사이트 주소';
 
 function handle(msg, sender) {
   var m = msg.trim().split(/\s+/), c = m[0];
@@ -253,6 +271,7 @@ function handle(msg, sender) {
   if (c === '!참가') return cmdJoin(m.slice(1), sender || '', true);
   if (c === '!불참') return cmdJoin(m.slice(1), sender || '', false);
   if (c === '!명단') return cmdRoster();
+  if (c === '!독려') return cmdCheer();
   if (c === '!내전') return cmdStart(m.slice(1), sender || '');
   if (c === '!등록') return cmdRegister(m.slice(1));
   if (c.indexOf('!시간') === 0) return cmdTime(msg.trim().slice(3).trim()); // !시간22시30분 처럼 붙여 써도 됨
