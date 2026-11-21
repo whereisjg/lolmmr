@@ -9,15 +9,25 @@ var BASE = 'https://firestore.googleapis.com/v1/projects/lolmmr-25378/databases/
 var POS = { top: '탑', jungle: '정글', mid: '미드', adc: '원딜', support: '서폿' };
 var ORDER = ['top', 'jungle', 'mid', 'adc', 'support'];
 
+// 읽기: 문서 없음(404)은 {}, 네트워크·서버 오류는 2번 더 시도(폰 네트워크가 가끔 한 번씩 끊김)
 function fetchJson(path) {
-  var body = org.jsoup.Jsoup.connect(BASE + path).ignoreContentType(true).timeout(8000).execute().body();
-  return JSON.parse(body);
+  for (var i = 0; ; i++) {
+    try {
+      var res = org.jsoup.Jsoup.connect(BASE + path).ignoreContentType(true).ignoreHttpErrors(true).timeout(8000).execute(), code = res.statusCode();
+      if (code === 404) return {};
+      if (code !== 200) throw new Error('HTTP ' + code);
+      return JSON.parse(res.body());
+    } catch (e) {
+      if (i >= 2) throw e;
+      java.lang.Thread.sleep(400 * (i + 1));
+    }
+  }
 }
-// Firestore commit (여러 쓰기를 한 번에, 원자적)
+// Firestore commit (여러 쓰기를 한 번에, 원자적). 다시 시도하지 않음(!등록이 두 번 들어가지 않게). 응답은 읽어서 연결을 닫음
 function commit(writes) {
   org.jsoup.Jsoup.connect(BASE.replace(/\/$/, '') + ':commit').ignoreContentType(true).timeout(8000)
     .header('Content-Type', 'application/json').requestBody(JSON.stringify({ writes: writes }))
-    .method(org.jsoup.Connection.Method.POST).execute();
+    .method(org.jsoup.Connection.Method.POST).execute().body();
 }
 
 // Firestore 값 → 일반 값
@@ -62,7 +72,7 @@ function cmdRank() {
 
 function cmdTeam() {
   var s;
-  try { s = obj(fetchJson('series/current').fields || {}); } catch (e) { s = {}; }
+  s = obj(fetchJson('series/current').fields || {});
   if (!s.active) return '진행 중인 시리즈가 없습니다.';
   var map = {}; players().forEach(function (p) { map[p.id] = p; });
   var roles = s.roles || {}, score = s.score || {}, wins = s.wins || 2;
@@ -100,10 +110,12 @@ function cmdPlayer(name) {
 var ROSTER = 'series/roster', MAX = 10;
 var DOC = 'projects/lolmmr-25378/databases/(default)/documents/' + ROSTER;
 function rosterDay() { return new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10); }
-function rawRoster() { try { return obj(fetchJson(ROSTER).fields || {}); } catch (e) { return {}; } }
+// 읽기 오류는 삼키지 않는다(예전엔 빈 명단으로 보여서 "0/10"이 나옴)
+function rawRoster() { return obj(fetchJson(ROSTER).fields || {}); }
 // 모집 중 = !내전으로 연 명단이 오늘 것(open, day). 아니면 null
 function openRoster() { var r = rawRoster(); return r.open && r.day === rosterDay() ? { ids: r.ids || [], note: r.note || '', out: r.out || [] } : null; }
-function readRoster() { var r = openRoster(); return r ? r.ids : []; }
+// 쓰기 뒤 다시 읽기: 쓰기는 이미 됐으니 읽기가 실패하면 예상 명단(fb)으로 보여 준다
+function rosterAfter(fb) { try { return openRoster() || fb; } catch (e) { return fb; } }
 function strs(a) { return { arrayValue: a.length ? { values: a.map(function (x) { return { stringValue: x }; }) } : {} }; }
 // !내전: 명단을 새로 연다(보낸 사람은 바로 참가)
 function startRoster(ids, note, by) {
@@ -171,11 +183,13 @@ function cmdJoin(args, sender, add) {
     if (me) { who.push(me.id); if (!find(sender, false)) note += "\n(카톡 이름 '" + sender + "'을 " + me.name + '(으)로 인식. 틀리면 사이트 AKA에 카톡 이름을 넣어 주세요)'; }
     else miss.push(sender);
   }
-  if (!openRoster()) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
+  var cur = openRoster();
+  if (!cur) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
   if (!who.length) return "'" + miss.join(', ') + "' 선수를 찾지 못했습니다. 사이트 선수 탭 편집에서 AKA에 카톡 이름을 넣어 주세요.";
-  var before = readRoster();
+  var before = cur.ids;
   changeRoster(who, add);
-  var ar = openRoster() || { ids: [], note: '' }, after = ar.ids, head;
+  var ar = rosterAfter({ note: cur.note, out: [], ids: add ? before.concat(who.filter(function (id) { return before.indexOf(id) < 0; }))
+    : before.filter(function (id) { return who.indexOf(id) < 0; }) }), after = ar.ids, head;
   if (add) {
     var fresh = who.filter(function (id) { return before.indexOf(id) < 0; });
     head = fresh.length ? fresh.map(function (id) { return nameOf(map, id); }).join(', ') + ' 참가' : '이미 참가 중입니다.';
@@ -189,9 +203,10 @@ function cmdJoin(args, sender, add) {
   return head + note + (miss.length ? '\n(못 찾은 이름: ' + miss.join(', ') + ')' : '') + '\n\n' + rosterText(ar, map);
 }
 function cmdRoster() {
-  if (!openRoster()) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
+  var r = openRoster();
+  if (!r) return '모집 중인 내전이 없습니다. !내전 으로 모집을 시작하세요.';
   var map = {}; players().forEach(function (p) { map[p.id] = p; });
-  return rosterText(openRoster(), map);
+  return rosterText(r, map);
 }
 // !독려: 남은 자리·시간·지금 참가자 + 최근 30일 안에 뛴(또는 등록한, players.ts) 사람 중 아직 신청 안 한 사람(오늘 !불참한 사람 제외)
 var CHEERS = ['오늘 협곡에서 만나요!', '빠지면 섭섭합니다.', '같이 MMR 올리러 가요.', '한 판만 하고 자면 됩니다.'];
@@ -219,7 +234,7 @@ function cmdStart(args, sender) {
   var me = finder(list)(sender, true);
   startRoster(me ? [me.id] : [], note, sender);
   return '[내전 모집 시작]' + (note ? ' ' + note : '') + '\n!참가 / !불참 으로 신청하세요. 선착순 ' + MAX + '명, 넘으면 대기.' +
-    (me ? '\n' + me.name + ' 참가' : '') + '\n\n' + rosterText(openRoster() || { ids: [], note: note }, map);
+    (me ? '\n' + me.name + ' 참가' : '') + '\n\n' + rosterText(rosterAfter({ ids: me ? [me.id] : [], note: note }), map);
 }
 // !시간 22시30분: 모집 중인 명단의 시간(note)만 바꿈. 명단은 그대로
 function cmdTime(text) {
@@ -229,7 +244,7 @@ function cmdTime(text) {
   commit([{ update: { name: DOC, fields: { note: { stringValue: text } } }, updateMask: { fieldPaths: ['note'] },
     updateTransforms: [{ fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }] }]);
   var map = {}; players().forEach(function (p) { map[p.id] = p; });
-  return '내전 시간 변경: ' + (cur.note ? cur.note + ' → ' : '') + text + '\n\n' + rosterText(openRoster() || cur, map);
+  return '내전 시간 변경: ' + (cur.note ? cur.note + ' → ' : '') + text + '\n\n' + rosterText(rosterAfter({ ids: cur.ids, note: text }), map);
 }
 
 // !등록 이름 [티어] [포지션 최대 2개]: 사이트 선수 추가와 같은 모양(fresh). 티어 없으면 실버 1000
